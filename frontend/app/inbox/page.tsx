@@ -514,7 +514,19 @@ export default function InboxPage() {
                       {conversation.bill_count > 0 && <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">บิล x{conversation.bill_count}</span>}
                     </div>
                   </button>
-                  <div className="mr-2 flex shrink-0 flex-col items-center gap-0.5">
+                  <div className="mr-2 flex shrink-0 items-center gap-1">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <button
+                        onClick={() => void toggleConversationVisibility(conversation)}
+                        disabled={updating}
+                        title={conversation.is_hidden ? "แสดงแชท" : "ซ่อนแชท"}
+                        aria-label={conversation.is_hidden ? "แสดงแชท" : "ซ่อนแชท"}
+                        className="rounded-md p-1.5 text-gray-400 transition hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed"
+                      >
+                        {conversation.is_hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                      </button>
+                      {conversation.order_confirmed_at && <span className="whitespace-nowrap text-xs font-medium text-gray-500">{formatThaiOrderTime(conversation.order_confirmed_at)}</span>}
+                    </div>
                     <button
                       onClick={() => openPhotoOptionsForConversation(conversation.id)}
                       disabled={updating}
@@ -524,7 +536,6 @@ export default function InboxPage() {
                     >
                       <Camera className="h-5 w-5" />
                     </button>
-                    {conversation.order_confirmed_at && <span className="whitespace-nowrap text-xs font-medium text-gray-500">{formatThaiOrderTime(conversation.order_confirmed_at)}</span>}
                   </div>
                 </div>
               </li>
