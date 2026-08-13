@@ -497,7 +497,7 @@ export default function InboxPage() {
                       setSelectedId(conversation.id);
                       setShowConversationOnMobile(true);
                     }}
-                    className="min-w-0 flex-1 px-4 py-3 text-left"
+                    className="min-w-0 flex-1 px-4 py-1.5 text-left"
                   >
                     <div className={`flex items-center gap-2 ${conversation.unread_count > 0 ? "font-semibold" : "font-medium"}`}>
                       <span className="truncate">{conversation.customer_display_name || `ลูกค้า #${conversation.customer_id}`}</span>
@@ -516,7 +516,7 @@ export default function InboxPage() {
                         disabled={updating}
                         title="ถ่ายหรือเลือกรูปเพื่อส่งให้ลูกค้า"
                         aria-label="ถ่ายหรือเลือกรูปเพื่อส่งให้ลูกค้า"
-                        className="rounded-md p-2 text-sky-600 hover:bg-white hover:text-sky-800 disabled:cursor-not-allowed disabled:text-slate-300"
+                        className="rounded-md p-1.5 text-sky-600 hover:bg-white hover:text-sky-800 disabled:cursor-not-allowed disabled:text-slate-300"
                       >
                         <Camera className="h-4 w-4" />
                       </button>
@@ -525,12 +525,12 @@ export default function InboxPage() {
                         disabled={updating}
                         title={conversation.is_hidden ? "แสดงแชท" : "ซ่อนแชท"}
                         aria-label={conversation.is_hidden ? "แสดงแชท" : "ซ่อนแชท"}
-                        className="rounded-md p-2 text-gray-400 transition hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed"
+                        className="rounded-md p-1.5 text-gray-400 transition hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed"
                       >
                         {conversation.is_hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                       </button>
                     </div>
-                    {conversation.order_confirmed_at && <span className="whitespace-nowrap text-sm font-medium text-gray-500">{formatThaiOrderTime(conversation.order_confirmed_at)}</span>}
+                    {conversation.order_confirmed_at && <span className="whitespace-nowrap text-xs font-medium text-gray-500">{formatThaiOrderTime(conversation.order_confirmed_at)}</span>}
                   </div>
                 </div>
               </li>
