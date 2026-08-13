@@ -235,6 +235,11 @@ export default function InboxPage() {
     }
   }
 
+  async function toggleConversationVisibility(conversation: Conversation) {
+    if (!conversation.is_hidden && !window.confirm(`ซ่อนแชตของ ${conversation.customer_display_name || `ลูกค้า #${conversation.customer_id}`} ใช่หรือไม่?`)) return;
+    await closeConversationView(conversation.id, { is_hidden: !conversation.is_hidden });
+  }
+
   async function updatePrimaryLabel(primary_label: string) {
     if (!selectedConversation) return;
     if (primary_label === "เสร็จสิ้น") {
@@ -510,26 +515,15 @@ export default function InboxPage() {
                     </div>
                   </button>
                   <div className="mr-2 flex shrink-0 flex-col items-center gap-0.5">
-                    <div className="flex items-center">
-                      <button
-                        onClick={() => openPhotoOptionsForConversation(conversation.id)}
-                        disabled={updating}
-                        title="ถ่ายหรือเลือกรูปเพื่อส่งให้ลูกค้า"
-                        aria-label="ถ่ายหรือเลือกรูปเพื่อส่งให้ลูกค้า"
-                        className="rounded-md p-1.5 text-sky-600 hover:bg-white hover:text-sky-800 disabled:cursor-not-allowed disabled:text-slate-300"
-                      >
-                        <Camera className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => void closeConversationView(conversation.id, { is_hidden: !conversation.is_hidden })}
-                        disabled={updating}
-                        title={conversation.is_hidden ? "แสดงแชท" : "ซ่อนแชท"}
-                        aria-label={conversation.is_hidden ? "แสดงแชท" : "ซ่อนแชท"}
-                        className="rounded-md p-1.5 text-gray-400 transition hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed"
-                      >
-                        {conversation.is_hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => openPhotoOptionsForConversation(conversation.id)}
+                      disabled={updating}
+                      title="ถ่ายหรือเลือกรูปเพื่อส่งให้ลูกค้า"
+                      aria-label="ถ่ายหรือเลือกรูปเพื่อส่งให้ลูกค้า"
+                      className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-sky-600 hover:bg-sky-50 hover:text-sky-800 disabled:cursor-not-allowed disabled:text-slate-300"
+                    >
+                      <Camera className="h-5 w-5" />
+                    </button>
                     {conversation.order_confirmed_at && <span className="whitespace-nowrap text-xs font-medium text-gray-500">{formatThaiOrderTime(conversation.order_confirmed_at)}</span>}
                   </div>
                 </div>
@@ -581,7 +575,7 @@ export default function InboxPage() {
                 {PAYMENT_LABEL_OPTIONS.map((label) => <option key={label} value={label}>{label}</option>)}
               </select>
               <button
-                onClick={() => void closeConversationView(selectedConversation.id, { is_hidden: !selectedConversation.is_hidden })}
+                onClick={() => void toggleConversationVisibility(selectedConversation)}
                 disabled={updating}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium hover:bg-gray-50 disabled:cursor-not-allowed"
               >
