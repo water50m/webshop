@@ -1,6 +1,6 @@
 "use client";
 
-import { Package, ImageOff, LayoutGrid, Table as TableIcon, Plus, X, Trash2 } from "lucide-react";
+import { Package, ImageOff, LayoutGrid, Table as TableIcon, Plus, SlidersHorizontal, X, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, Ingredient, InventoryMode, Product, ProductModifier, RecipeItem, resolveImageUrl, ShopSettings } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -14,6 +14,7 @@ export default function ProductsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(true);
 
   const [categories, setCategories] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -310,12 +311,22 @@ export default function ProductsPage() {
 
   return (
     <main className="p-4 md:p-6 lg:p-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Package className="w-5 h-5 text-amber-500" />
-          สินค้า/สต๊อก
-        </h1>
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="flex items-center gap-2 pl-14 text-xl font-semibold md:pl-0">
+            <Package className="h-5 w-5 text-amber-500" />
+            สินค้า/สต๊อก
+          </h1>
+          <button
+            onClick={() => setMobileControlsOpen((open) => !open)}
+            aria-expanded={mobileControlsOpen}
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 md:hidden"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            {mobileControlsOpen ? "ซ่อนเครื่องมือ" : "เครื่องมือ"}
+          </button>
+        </div>
+        <div className={`${mobileControlsOpen ? "flex" : "hidden"} flex-wrap items-center gap-2 md:flex`}>
           {shopSettings && <label className="flex items-center gap-2 text-xs text-slate-600">
             ตอบ “มีอะไรบ้าง”
             <select value={shopSettings.menu_answer_format} onChange={(e) => void updateMenuAnswerFormat(e.target.value as "text" | "image")} className="rounded border border-slate-300 bg-white px-2 py-2">
@@ -335,7 +346,7 @@ export default function ProductsPage() {
       </div>
       {error && <p className="text-red-600 mb-4">{error}</p>}
 
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className={`${mobileControlsOpen ? "flex" : "hidden"} mb-4 flex-wrap gap-2 md:flex`}>
         <input
           type="text"
           placeholder="ค้นหา sku/ชื่อสินค้า"
