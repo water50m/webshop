@@ -13,8 +13,8 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<ViewMode>("table");
-  const [mobileControlsOpen, setMobileControlsOpen] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
 
   const [categories, setCategories] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("");
