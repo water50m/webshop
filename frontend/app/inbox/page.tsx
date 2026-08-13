@@ -532,7 +532,7 @@ export default function InboxPage() {
                       disabled={updating}
                       title="ถ่ายหรือเลือกรูปเพื่อส่งให้ลูกค้า"
                       aria-label="ถ่ายหรือเลือกรูปเพื่อส่งให้ลูกค้า"
-                      className="flex min-h-13 min-w-13 items-center justify-center rounded-xl bg-sky-50 text-sky-600 hover:bg-sky-100 hover:text-sky-800 disabled:cursor-not-allowed disabled:text-slate-300"
+                      className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-sky-50 text-sky-600 hover:bg-sky-100 hover:text-sky-800 disabled:cursor-not-allowed disabled:text-slate-300"
                     >
                       <Camera className="h-6 w-6" />
                     </button>
