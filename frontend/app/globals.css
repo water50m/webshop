@@ -53,4 +53,12 @@ textarea:focus-visible {
   textarea {
     font-size: 16px;
   }
+
+  /* Keep top-left titles clear of the fixed global navigation button. */
+  .mobile-content > :is(main, div) > h1,
+  .mobile-content > :is(main, div) > :first-child > h1,
+  .mobile-content > main > aside > :first-child > h1,
+  .mobile-content > main > section:first-child h1 {
+    margin-left: 3.5rem;
+  }
 }
