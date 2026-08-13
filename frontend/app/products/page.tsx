@@ -1,6 +1,6 @@
 "use client";
 
-import { Package, ImageOff, LayoutGrid, Table as TableIcon, Plus, SlidersHorizontal, X, Trash2 } from "lucide-react";
+import { Package, ImageOff, LayoutGrid, Table as TableIcon, Plus, ChevronDown, ChevronUp, X, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, Ingredient, InventoryMode, Product, ProductModifier, RecipeItem, resolveImageUrl, ShopSettings } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -320,10 +320,9 @@ export default function ProductsPage() {
           <button
             onClick={() => setMobileControlsOpen((open) => !open)}
             aria-expanded={mobileControlsOpen}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 md:hidden"
+            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 md:hidden"
           >
-            <SlidersHorizontal className="h-4 w-4" />
-            {mobileControlsOpen ? "ซ่อนเครื่องมือ" : "เครื่องมือ"}
+            {mobileControlsOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
           </button>
         </div>
         <div className={`${mobileControlsOpen ? "flex" : "hidden"} flex-wrap items-center gap-2 md:flex`}>
