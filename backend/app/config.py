@@ -20,14 +20,6 @@ class Settings(BaseSettings):
     line_channel_secret: str = ""
 
     cors_origins: str = "http://localhost:3000"
-    # The POS can move between trusted shop/test LANs.  Permit only private
-    # IPv4 origins on the frontend port, rather than pinning one DHCP address.
-    cors_origin_regex: str = (
-        r"^http://(localhost|127\.0\.0\.1|"
-        r"10(?:\.\d{1,3}){3}|"
-        r"192\.168(?:\.\d{1,3}){2}|"
-        r"172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}):3000$"
-    )
 
     @property
     def cors_origin_list(self) -> list[str]:
