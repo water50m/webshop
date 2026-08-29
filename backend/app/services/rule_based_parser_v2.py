@@ -68,7 +68,12 @@ ORDER_SIGNALS = ("เอา", "รับ", "สั่ง", "ขอ")
 PAYMENT_SIGNALS = ("โอน", "สลิป", "คนละครึ่ง", "ไทยช่วยไทย", "จ่าย")
 COMPLAINT_SIGNALS = ("ออเดอร์ไม่ครบ", "ไม่ครบ", "ส่งผิด", "ผิดหอ", "ผิดที่", "ยังไม่ได้ส่ง")
 CUSTOMIZATION_SIGNALS = ("ไม่เอาผัก", "ไม่ใส่", "เอาแต่", "แยกไก่")
-GREETING_PATTERN = re.compile(r"^(?:สวัสดี(?:ครับ|ค่ะ|คะ)?|หวัดดี(?:ครับ|ค่ะ|คะ)?|hello|hi)$")
+# Intentionally a small closed set: these are common stand-alone Thai
+# greetings with one omitted/mistyped character. Greeting recovery is safe;
+# unlike a product typo it cannot create an order or alter stock.
+GREETING_PATTERN = re.compile(
+    r"^(?:สวัสดี?|สวัดดี|สวัสดี|สวสดี|หวัดดี?|หวัดด|hello|hi)(?:ครับ|คับ|ค่ะ|คะ|ค้าบ|คร้าบ)?$"
+)
 
 
 @dataclass(frozen=True)
@@ -248,6 +253,40 @@ def _greeting_result(normalized_text: str) -> tuple[str, str, str | None, str | 
     if GREETING_PATTERN.fullmatch(normalized_text):
         return "greeting", "awaiting_order", None, "สวัสดีครับ รับอะไรดีครับ"
     return None
+
+
+def _ambiguous_special_order_result(db: Session, normalized_text: str) -> ParserV2Result | None:
+    """Ask before interpreting a bare 'พิเศษ' as either rice or chicken.
+
+    The product catalog may contain both kinds (and several chicken
+    preparations), so choosing one automatically would create the wrong order.
+    """
+    if "พิเศษ" not in normalized_text or not any(signal in normalized_text for signal in ORDER_SIGNALS):
+        return None
+    if "ข้าว" in normalized_text or "ไก่" in normalized_text:
+        return None
+    candidates = [
+        product
+        for product in _available_products(db, lambda product: "พิเศษ" in product.name)
+        if "ข้าว" in product.name or "ไก่" in product.name
+    ]
+    if not any("ข้าว" in product.name for product in candidates) or not any("ไก่" in product.name for product in candidates):
+        return None
+    quantity_match = re.search(r"(?<!\d)(\d{1,3})(?!\d)", normalized_text)
+    quantity = int(quantity_match.group(1)) if quantity_match else 1
+    return ParserV2Result(
+        normalized_text,
+        [],
+        "ask_special_type",
+        "awaiting_special_type",
+        [],
+        None,
+        [
+            {"product_id": product.id, "product_name": product.name, "quantity": quantity}
+            for product in candidates
+        ],
+        answer_text="รับพิเศษเป็นข้าวหรือไก่ครับ",
+    )
 
 
 def _matches(normalized_text: str, entries: list[CatalogEntry]) -> list[tuple[int, int, CatalogEntry]]:
@@ -469,6 +508,9 @@ def parse_message(db: Session, text: str, *, entries: list[CatalogEntry] | None 
         return ParserV2Result(
             normalized, tokens, intent, next_state, [], handoff_reason, [], answer_text=answer_text
         )
+    ambiguous_special = _ambiguous_special_order_result(db, normalized)
+    if ambiguous_special:
+        return ambiguous_special
 
     if matches:
         matches, fallback_by_product = _conditional_substitution(normalized, matches, entries)
@@ -605,6 +647,49 @@ def _context_reference_result(db: Session, text: str, state: ParserV2Conversatio
     return ParserV2Result(normalized, [], "start_order", "collecting_delivery_details", [item], None, [])
 
 
+def _pending_special_choice_result(
+    db: Session, text: str, state: ParserV2ConversationState
+) -> ParserV2Result | None:
+    """Turn a reply to the bare-special question into a verified item."""
+    if state.state != "awaiting_special_type" or not state.last_items:
+        return None
+    pending = state.last_items[0]
+    candidate_ids = pending.get("pending_special_candidate_ids")
+    if not isinstance(candidate_ids, list):
+        return None
+    normalized = normalize_text(text)
+    requested_kind = "ข้าว" if "ข้าว" in normalized else "ไก่" if "ไก่" in normalized else None
+    if requested_kind is None:
+        return ParserV2Result(
+            normalized, [], "ask_special_type", "awaiting_special_type", [], None, [],
+            answer_text="กรุณาเลือกพิเศษเป็นข้าวหรือไก่ครับ",
+        )
+    candidates = [
+        product
+        for product in db.query(Product).filter(Product.id.in_(candidate_ids)).order_by(Product.name).all()
+        if requested_kind in product.name
+        and product.is_available
+        and (product.stock_mode == "unlimited" or product.stock_quantity > 0)
+    ]
+    quantity = max(1, int(pending.get("quantity", 1)))
+    if len(candidates) != 1:
+        options = ", ".join(product.name for product in candidates)
+        answer = f"รับไก่พิเศษแบบไหนครับ: {options}" if options else "ขออภัย ขณะนี้ไม่มีรายการพิเศษที่เลือกได้ครับ"
+        return ParserV2Result(normalized, [], "ask_special_type", "awaiting_special_type", [], None, [], answer_text=answer)
+    product = candidates[0]
+    if product.stock_mode != "unlimited" and product.stock_quantity < quantity:
+        return ParserV2Result(normalized, [], "ask_admin", "waiting_for_admin", [], "stock_unavailable_or_unset", [])
+    return ParserV2Result(
+        normalized,
+        [],
+        "start_order",
+        "collecting_delivery_details",
+        [ParsedItem(product.id, product.name, normalized, quantity, "wrapped", "special_choice")],
+        None,
+        [],
+    )
+
+
 def get_or_create_conversation_state(db: Session, conversation_id: int) -> ParserV2ConversationState:
     conversation = db.get(Conversation, conversation_id)
     if conversation is None:
@@ -623,7 +708,10 @@ def advance_conversation_state(
     """Advance Parser v2 memory without sending a reply or creating an order."""
     state = get_or_create_conversation_state(db, conversation_id)
     result = parse_message(db, text)
-    contextual = _context_reference_result(db, text, state)
+    special_choice = _pending_special_choice_result(db, text, state)
+    contextual = _context_reference_result(db, text, state) if special_choice is None else None
+    if special_choice is not None:
+        result = special_choice
     if contextual is not None:
         result = contextual
     elif result.handoff_reason == "delivery_context_requires_admin" and state.delivery_context_confirmed:
@@ -642,6 +730,11 @@ def advance_conversation_state(
             }
             for item in result.items
         ]
+    elif result.intent == "ask_special_type" and result.next_state == "awaiting_special_type":
+        candidate_ids = [candidate["product_id"] for candidate in result.candidates if candidate.get("product_id")]
+        quantity = next((candidate.get("quantity", 1) for candidate in result.candidates if candidate.get("quantity")), 1)
+        if candidate_ids:
+            state.last_items = [{"pending_special_candidate_ids": candidate_ids, "quantity": quantity}]
     if result.next_state == "answer_if_verified" and state.state == "awaiting_order":
         pass
     else:

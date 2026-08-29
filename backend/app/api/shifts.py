@@ -3,8 +3,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user
-from app.models import Shift, User, UserRole
+from app.deps import get_active_shop_membership, get_current_user
+from app.models import Shift, ShopMembership, User, UserRole
 from app.services import shifts as shift_service
 
 router = APIRouter(prefix="/api/shifts", tags=["shifts"], dependencies=[Depends(get_current_user)])
@@ -60,15 +60,15 @@ def _serialize(shift: Shift) -> ShiftOut:
 
 
 @router.get("/current", response_model=ShiftOut | None)
-def get_current_shift(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    shift = shift_service.get_open_shift(db, user)
+def get_current_shift(db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    shift = shift_service.get_open_shift(db, user, membership.shop_id)
     return _serialize(shift) if shift else None
 
 
 @router.post("/open", response_model=ShiftOut)
-def open_shift(payload: OpenShiftIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def open_shift(payload: OpenShiftIn, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
     try:
-        shift = shift_service.open_shift(db, user, payload.opening_cash, payload.note)
+        shift = shift_service.open_shift(db, user, payload.opening_cash, payload.note, membership.shop_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     db.commit()
@@ -82,8 +82,9 @@ def close_shift(
     payload: CloseShiftIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    shift = db.get(Shift, shift_id)
+    shift = db.query(Shift).filter_by(id=shift_id, shop_id=membership.shop_id).first()
     if shift is None:
         raise HTTPException(status_code=404, detail="ไม่พบกะนี้")
     _ensure_can_manage_shift(shift, user)
@@ -97,8 +98,8 @@ def close_shift(
 
 
 @router.get("/{shift_id}/summary", response_model=ShiftSummaryOut)
-def get_shift_summary(shift_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    shift = db.get(Shift, shift_id)
+def get_shift_summary(shift_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    shift = db.query(Shift).filter_by(id=shift_id, shop_id=membership.shop_id).first()
     if shift is None:
         raise HTTPException(status_code=404, detail="ไม่พบกะนี้")
     _ensure_can_manage_shift(shift, user)

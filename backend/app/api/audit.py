@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import require_role
-from app.models import SaleAuditLog, UserRole
+from app.deps import get_active_shop_membership, require_role
+from app.models import Sale, SaleAuditLog, ShopMembership, UserRole
 
 router = APIRouter(
     prefix="/api/audit",
@@ -30,8 +30,9 @@ def list_sale_audit_logs(
     start: datetime | None = None,
     end: datetime | None = None,
     db: Session = Depends(get_db),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    query = db.query(SaleAuditLog)
+    query = db.query(SaleAuditLog).join(Sale).filter(Sale.shop_id == membership.shop_id)
     if start is not None:
         query = query.filter(SaleAuditLog.created_at >= start)
     if end is not None:

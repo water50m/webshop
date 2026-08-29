@@ -10,6 +10,7 @@
 html {
   min-width: 320px;
   background: var(--background);
+  -webkit-text-size-adjust: 100%;
 }
 
 @theme inline {
@@ -28,6 +29,45 @@ body {
   min-width: 320px;
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-x: none;
+}
+
+/* Shared mobile safeguards for every authenticated route. */
+.mobile-content {
+  min-width: 0;
+}
+
+.mobile-content main,
+.mobile-content > div {
+  min-width: 0;
+}
+
+.mobile-content :is(p, td, th, label, a) {
+  overflow-wrap: anywhere;
+}
+
+.mobile-app-bar {
+  height: max(4rem, calc(env(safe-area-inset-top) + 3.25rem));
+  padding: env(safe-area-inset-top) 0.75rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 0 0 auto;
+  border-bottom: 1px solid rgb(226 232 240);
+  background: rgb(255 255 255 / 0.96);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.05);
+}
+
+.mobile-app-bar__menu {
+  display: inline-flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  color: white;
+  background: rgb(15 23 42);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.2);
 }
 
 button,
@@ -47,18 +87,95 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+@property --admin-waiting-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* The moving warm highlight makes chats waiting for an admin easy to spot. */
+.admin-waiting-border {
+  border-color: transparent !important;
+  background:
+    linear-gradient(rgb(245 243 255), rgb(245 243 255)) padding-box,
+    conic-gradient(
+      from var(--admin-waiting-border-angle),
+      rgb(167 139 250) 0deg,
+      rgb(196 181 253) 235deg,
+      rgb(253 224 71) 270deg,
+      rgb(249 115 22) 292deg,
+      rgb(192 132 252) 320deg,
+      rgb(167 139 250) 360deg
+    ) border-box;
+  animation: admin-waiting-border-spin 1.7s linear infinite;
+}
+
+@keyframes admin-waiting-border-spin {
+  to { --admin-waiting-border-angle: 360deg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-waiting-border {
+    animation: none;
+  }
+}
+
 @media (max-width: 767px) {
+  .mobile-content main,
+  .mobile-content > div:not(.fixed) {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* A page can scroll a data grid horizontally without widening the viewport. */
+  .mobile-content main {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-content table {
+    min-width: max-content;
+  }
+
+  /* Most back-office forms use flex rows; let their controls wrap cleanly. */
+  .mobile-content form.flex,
+  .mobile-content main > .flex {
+    flex-wrap: wrap;
+  }
+
+  .mobile-content form.flex > :is(input, select, textarea) {
+    min-width: 0;
+  }
+
+  .mobile-content form.flex > input.flex-1,
+  .mobile-content form.flex > select.flex-1,
+  .mobile-content form.flex > textarea.flex-1 {
+    flex-basis: 100%;
+  }
+
+  /* Dialog contents stay reachable above the mobile browser chrome. */
+  .fixed.inset-0 > .bg-white {
+    max-height: calc(100dvh - 2rem);
+    max-width: calc(100vw - 2rem);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   input,
   select,
   textarea {
     font-size: 16px;
   }
 
-  /* Keep top-left titles clear of the fixed global navigation button. */
-  .mobile-content > :is(main, div) > h1,
-  .mobile-content > :is(main, div) > :first-child > h1,
-  .mobile-content > main > aside > :first-child > h1,
-  .mobile-content > main > section:first-child h1 {
-    margin-left: 3.5rem;
+}
+
+@media (max-width: 420px) {
+  .mobile-content main {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  .mobile-content h1 {
+    font-size: 1.125rem;
   }
 }

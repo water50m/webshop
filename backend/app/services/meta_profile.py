@@ -4,6 +4,7 @@ import httpx
 
 from app.config import settings
 from app.models import Customer
+from app.services.meta_tokens import MetaTokenConfigurationError, channel_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -16,15 +17,22 @@ def populate_messenger_display_name(customer: Customer) -> None:
     Meta's webhook contains a Page-scoped ID, not the customer's profile name.
     The User Profile API supplies the name when a Page access token is configured.
     """
-    if customer.display_name or not settings.meta_page_access_token:
+    if customer.display_name and customer.profile_image_url:
+        return
+    try:
+        access_token = channel_access_token(customer.channel) or settings.meta_page_access_token
+    except MetaTokenConfigurationError:
+        logger.warning("Unable to decrypt Messenger Page access token")
+        return
+    if not access_token:
         return
 
     try:
         response = httpx.get(
             f"{_GRAPH_API_BASE_URL}/{customer.external_user_id}",
             params={
-                "fields": "first_name,last_name",
-                "access_token": settings.meta_page_access_token,
+                "fields": "first_name,last_name,profile_pic",
+                "access_token": access_token,
             },
             timeout=5.0,
         )
@@ -41,3 +49,6 @@ def populate_messenger_display_name(customer: Customer) -> None:
     display_name = " ".join(part for part in (first_name, last_name) if part)
     if display_name:
         customer.display_name = display_name[:255]
+    profile_image_url = str(payload.get("profile_pic") or "").strip()
+    if profile_image_url:
+        customer.profile_image_url = profile_image_url[:2000]

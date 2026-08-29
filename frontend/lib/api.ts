@@ -1,4 +1,26 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// Resolve this in the browser, not while Next.js builds the bundle.  On a
+// phone/tablet, localhost means that device itself; the page hostname is the
+// computer that is actually running the backend.
+const runtimeApiBaseUrl = () => {
+  const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (configuredApiBaseUrl) return configuredApiBaseUrl;
+  const location = globalThis.location;
+  // Production is served by the same Next.js origin, which proxies /api to
+  // FastAPI.  Keep the explicit port for the local frontend dev server.
+  if (location) {
+    return location.port === "3000"
+      ? `${location.protocol}//${location.hostname}:8000`
+      : location.origin;
+  }
+  return "http://localhost:8000";
+};
+
+export const API_BASE_URL = runtimeApiBaseUrl();
+
+const activeShopHeaders = (): Record<string, string> => {
+  const shopId = typeof window === "undefined" ? null : window.localStorage.getItem("active-shop-id");
+  return shopId ? { "X-Shop-ID": shopId } : {};
+};
 
 export function resolveImageUrl(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -10,9 +32,11 @@ export type Conversation = {
   channel_id: number;
   customer_id: number;
   customer_display_name: string;
+  customer_profile_image_url: string;
   last_message_at: string;
   status: ConversationStatus;
   is_hidden: boolean;
+  is_pinned: boolean;
   unread_count: number;
   bill_count: number;
   primary_label: string | null;
@@ -140,6 +164,7 @@ export type Message = {
   direction: "in" | "out";
   text: string;
   created_at: string;
+  sent_by_display_name: string | null;
 };
 
 export type DraftOrderItem = {
@@ -158,7 +183,52 @@ export type DraftOrder = {
   status: "pending" | "confirmed" | "rejected";
   note: string;
   total: number;
+  confirmed_at: string | null;
+  confirmed_by_display_name: string | null;
   items: DraftOrderItem[];
+};
+
+export type FacebookPageChoice = {
+  id: string;
+  name: string;
+  category: string;
+  tasks: string[];
+};
+
+export type FacebookPendingConnection = {
+  id: string;
+  expires_at: string;
+  pages: FacebookPageChoice[];
+};
+
+export type FacebookConnection = {
+  id: number;
+  page_id: string;
+  name: string;
+  connected_at: string;
+};
+
+export type DataDeletionRequest = {
+  confirmation_code: string;
+  status: string;
+  detail: string;
+};
+
+export type ChannelMember = {
+  user_id: number;
+  username: string;
+  display_name: string;
+  role: "page_owner" | "page_manager" | "page_staff" | "viewer";
+  is_active: boolean;
+};
+
+export type ShopUserLookup = { id: number; username: string; display_name: string };
+export type Shop = {
+  id: number;
+  name: string;
+  role: "owner" | "manager" | "staff";
+  facebook_page_name: string | null;
+  facebook_page_id: string | null;
 };
 
 export type InboxMessageEvent = {
@@ -571,7 +641,7 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...activeShopHeaders(), ...(init?.headers ?? {}) },
     cache: "no-store",
     credentials: "include",
   });
@@ -598,6 +668,16 @@ export type AuthUser = {
   has_pin: boolean;
 };
 
+export type FacebookOnboardingPage = {
+  id: string;
+  name: string;
+  registered: boolean;
+  channel_id: number | null;
+  shop_id: number | null;
+};
+
+export type FacebookOnboardingPending = { id: string; pages: FacebookOnboardingPage[] };
+
 export type UserIn = {
   username: string;
   password: string;
@@ -613,6 +693,12 @@ export type UserUpdateIn = {
 
 export const api = {
   health: () => request<{ status: string }>("/health"),
+  startFacebookLogin: () => request<{ authorization_url: string }>("/api/auth/facebook/start", { method: "POST" }),
+  getFacebookLoginPending: (attemptId: string) => request<FacebookOnboardingPending>(`/api/auth/facebook/pending/${attemptId}`),
+  registerFacebookLoginPage: (attemptId: string, pageId: string) => request<FacebookOnboardingPage>(`/api/auth/facebook/pending/${attemptId}/register`, { method: "POST", body: JSON.stringify({ page_id: pageId }) }),
+  selectFacebookLoginPage: (attemptId: string, pageId: string) => request<FacebookOnboardingPage>(`/api/auth/facebook/pending/${attemptId}/select`, { method: "POST", body: JSON.stringify({ page_id: pageId }) }),
+  listShops: () => request<Shop[]>("/api/shops"),
+  createShop: (name: string) => request<Shop>("/api/shops", { method: "POST", body: JSON.stringify({ name }) }),
   inboxEventsUrl: () => `${API_BASE_URL}/api/events/inbox`,
   getHistoryPreparationStatus: () => request<HistoryPreparationStatus>("/api/history-preparation/status"),
   listHistoryAnalysisPreparations: () =>
@@ -658,14 +744,15 @@ export const api = {
     request<AuthUser>(`/api/users/${id}`, { method: "PUT", body: JSON.stringify(user) }),
   deleteUser: (id: number) => request<{ ok: boolean }>(`/api/users/${id}`, { method: "DELETE" }),
 
-  listConversations: (filters?: { status?: ConversationStatus; visibility?: "active" | "hidden" | "all" }) => {
+  listConversations: (filters?: { status?: ConversationStatus; visibility?: "active" | "hidden" | "all"; channelId?: number }) => {
     const params = new URLSearchParams();
     if (filters?.status) params.set("status", filters.status);
     if (filters?.visibility) params.set("visibility", filters.visibility);
+    if (filters?.channelId) params.set("channel_id", String(filters.channelId));
     const query = params.toString();
     return request<Conversation[]>(`/api/conversations${query ? `?${query}` : ""}`);
   },
-  updateConversation: (conversationId: number, update: Partial<Pick<Conversation, "status" | "is_hidden" | "primary_label" | "payment_label" | "delivery_note">>) =>
+  updateConversation: (conversationId: number, update: Partial<Pick<Conversation, "status" | "is_hidden" | "is_pinned" | "primary_label" | "payment_label" | "delivery_note">>) =>
     request<Conversation>(`/api/conversations/${conversationId}`, {
       method: "PATCH",
       body: JSON.stringify(update),
@@ -685,6 +772,7 @@ export const api = {
       body: form,
       cache: "no-store",
       credentials: "include",
+      headers: activeShopHeaders(),
     });
     if (!response.ok) {
       const body = await response.text();
@@ -700,14 +788,43 @@ export const api = {
     request<Message[]>(`/api/conversations/${conversationId}/messages`),
   listDraftOrders: (status?: string) =>
     request<DraftOrder[]>(`/api/draft-orders${status ? `?status=${status}` : ""}`),
+  createManualDraftOrder: (payload: { conversation_id: number; items: { product_id: number; quantity: number; unit_price?: number }[] }) =>
+    request<DraftOrder>("/api/draft-orders", { method: "POST", body: JSON.stringify(payload) }),
   listChatOrderHistory: () => request<ChatOrderHistoryCustomer[]>("/api/order-history"),
   getDraftOrder: (id: number) => request<DraftOrder>(`/api/draft-orders/${id}`),
-  updateDraftOrder: (id: number, payload: { note?: string; items?: { product_id: number; quantity: number }[] }) =>
+  updateDraftOrder: (id: number, payload: { note?: string; items?: { product_id: number; quantity: number; unit_price?: number }[] }) =>
     request<DraftOrder>(`/api/draft-orders/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   confirmDraftOrder: (id: number) =>
     request<DraftOrder>(`/api/draft-orders/${id}/confirm`, { method: "POST" }),
   rejectDraftOrder: (id: number) =>
     request<DraftOrder>(`/api/draft-orders/${id}/reject`, { method: "POST" }),
+  startFacebookConnection: () =>
+    request<{ authorization_url: string }>("/api/meta/facebook/connections/start", { method: "POST" }),
+  getPendingFacebookConnection: (attemptId: string) =>
+    request<FacebookPendingConnection>(`/api/meta/facebook/connections/pending/${attemptId}`),
+  selectFacebookPage: (attemptId: string, pageId: string) =>
+    request<FacebookConnection>(`/api/meta/facebook/connections/pending/${attemptId}/select`, {
+      method: "POST",
+      body: JSON.stringify({ page_id: pageId }),
+    }),
+  listFacebookConnections: () => request<FacebookConnection[]>("/api/meta/facebook/connections"),
+  disconnectFacebookPage: (channelId: number) =>
+    request<{ ok: boolean }>(`/api/meta/facebook/connections/${channelId}`, { method: "DELETE" }),
+  deleteFacebookPageData: (channelId: number) =>
+    request<DataDeletionRequest>(`/api/meta/facebook/connections/${channelId}/data`, {
+      method: "DELETE",
+      body: JSON.stringify({ confirmation: true }),
+    }),
+  createFacebookDataDeletionRequest: (payload: { page_id: string; requester_email?: string; requester_name?: string }) =>
+    request<DataDeletionRequest>("/api/meta/facebook/data-deletion-requests", { method: "POST", body: JSON.stringify(payload) }),
+  getFacebookDataDeletionRequest: (code: string) =>
+    request<DataDeletionRequest>(`/api/meta/facebook/data-deletion-requests/${encodeURIComponent(code)}`),
+  listChannelMembers: (channelId: number) => request<ChannelMember[]>(`/api/channels/${channelId}/members`),
+  findChannelShopUser: (channelId: number, username: string) => request<ShopUserLookup>(`/api/channels/${channelId}/users?username=${encodeURIComponent(username)}`),
+  grantChannelMember: (channelId: number, userId: number, role: ChannelMember["role"]) =>
+    request<ChannelMember>(`/api/channels/${channelId}/members`, { method: "PUT", body: JSON.stringify({ user_id: userId, role }) }),
+  revokeChannelMember: (channelId: number, userId: number) =>
+    request<{ ok: boolean }>(`/api/channels/${channelId}/members/${userId}`, { method: "DELETE" }),
   listExpenses: () => request<Expense[]>("/api/expenses"),
   createExpense: (expense: Omit<Expense, "id">) =>
     request<Expense>("/api/expenses", { method: "POST", body: JSON.stringify(expense) }),
@@ -759,6 +876,7 @@ export const api = {
       method: "POST",
       body: formData,
       credentials: "include",
+      headers: activeShopHeaders(),
     });
     if (!res.ok) {
       const body = await res.text();

@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import require_role
-from app.models import Expense, ExpenseCategory, UserRole
+from app.deps import get_active_shop_membership, require_role
+from app.models import Expense, ExpenseCategory, ShopMembership, UserRole
 
 router = APIRouter(
     prefix="/api/expenses",
@@ -45,8 +45,9 @@ def list_expenses(
     start: date | None = None,
     end: date | None = None,
     db: Session = Depends(get_db),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    query = db.query(Expense)
+    query = db.query(Expense).filter(Expense.shop_id == membership.shop_id)
     if start is not None:
         query = query.filter(Expense.expense_date >= start)
     if end is not None:
@@ -55,8 +56,9 @@ def list_expenses(
 
 
 @router.post("", response_model=ExpenseOut)
-def create_expense(payload: ExpenseIn, db: Session = Depends(get_db)):
+def create_expense(payload: ExpenseIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
     expense = Expense(
+        shop_id=membership.shop_id,
         category=payload.category,
         amount=payload.amount,
         description=payload.description,
@@ -69,8 +71,8 @@ def create_expense(payload: ExpenseIn, db: Session = Depends(get_db)):
 
 
 @router.put("/{expense_id}", response_model=ExpenseOut)
-def update_expense(expense_id: int, payload: ExpenseIn, db: Session = Depends(get_db)):
-    expense = db.get(Expense, expense_id)
+def update_expense(expense_id: int, payload: ExpenseIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    expense = db.query(Expense).filter_by(id=expense_id, shop_id=membership.shop_id).first()
     if expense is None:
         raise HTTPException(status_code=404, detail="Expense not found")
     expense.category = payload.category
@@ -83,8 +85,8 @@ def update_expense(expense_id: int, payload: ExpenseIn, db: Session = Depends(ge
 
 
 @router.delete("/{expense_id}")
-def delete_expense(expense_id: int, db: Session = Depends(get_db)):
-    expense = db.get(Expense, expense_id)
+def delete_expense(expense_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    expense = db.query(Expense).filter_by(id=expense_id, shop_id=membership.shop_id).first()
     if expense is None:
         raise HTTPException(status_code=404, detail="Expense not found")
     db.delete(expense)

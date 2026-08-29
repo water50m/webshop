@@ -221,7 +221,12 @@ def ingest_incoming_message(
     sender_external_id: str,
     text: str,
     raw_payload: dict,
+    parser_text: str | None = None,
 ) -> tuple[Message, Conversation, str, ParserV2Result]:
+    # Attachments do not have usable text, but a sticker is a conventional
+    # opening greeting. Keep the actual inbox text intact while allowing the
+    # channel webhook to provide a safe, synthetic parser input for it.
+    parser_text = text if parser_text is None else parser_text
     channel = get_or_create_channel(db, channel_type, channel_external_id)
     customer = get_or_create_customer(db, channel, sender_external_id)
     if channel_type == ChannelType.facebook_page:
@@ -263,17 +268,17 @@ def ingest_incoming_message(
     conversation.last_message_at = datetime.utcnow()
     conversation.unread_count += 1
 
-    classification = classify_sentence(text)
+    classification = classify_sentence(parser_text)
     # Parser v2 is the only text path that prepares Inbox draft orders.  It
     # preserves per-item quantities, stock safety and conversation references;
     # the legacy parser remains available for Messenger product buttons.
-    parser_v2_result, _ = advance_conversation_state(db, conversation.id, text)
+    parser_v2_result, _ = advance_conversation_state(db, conversation.id, parser_text)
     is_duplicate_order = bool(parser_v2_result.items and is_recent_repeat)
     if is_duplicate_order:
         message.raw_payload = {**raw_payload, "_duplicate_order": True}
     elif parser_v2_result.items and parser_v2_result.handoff_reason is None:
         upsert_draft_order_from_parser_v2(db, conversation, parser_v2_result.items)
-    record_handoff(db, text, parser_v2_result)
+    record_handoff(db, parser_text, parser_v2_result)
     if parser_v2_result.handoff_reason:
         set_label_slot(db, conversation, "primary", "รอแอดมิน")
     elif parser_v2_result.items and not is_duplicate_order:

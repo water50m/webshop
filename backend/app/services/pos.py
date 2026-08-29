@@ -54,8 +54,8 @@ def _apply_inventory_change(
         adjust_stock(db, product, int(round(signed_quantity)), reason, note=note, created_by=user)
 
 
-def create_held_sale(db: Session, user: User) -> Sale:
-    sale = Sale(status=SaleStatus.held, created_by_user_id=user.id)
+def create_held_sale(db: Session, user: User, shop_id: int) -> Sale:
+    sale = Sale(shop_id=shop_id, status=SaleStatus.held, created_by_user_id=user.id)
     db.add(sale)
     db.flush()
     return sale

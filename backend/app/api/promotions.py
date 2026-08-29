@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_role
-from app.models import DiscountType, Product, Promotion, PromotionItem, PromotionType, User, UserRole
+from app.deps import get_active_shop_membership, get_current_user, require_role
+from app.models import DiscountType, Product, Promotion, PromotionItem, PromotionType, ShopMembership, User, UserRole
 from app.services.promotions import is_promotion_active
 
 router = APIRouter(
@@ -78,7 +78,7 @@ def _serialize(promotion: Promotion) -> PromotionOut:
     )
 
 
-def _validate_payload(payload: PromotionIn, db: Session) -> None:
+def _validate_payload(payload: PromotionIn, db: Session, shop_id: int) -> None:
     if not payload.items:
         raise HTTPException(status_code=400, detail="ต้องมีสินค้าอย่างน้อย 1 รายการ")
     if payload.type == PromotionType.time_discount:
@@ -89,19 +89,20 @@ def _validate_payload(payload: PromotionIn, db: Session) -> None:
     if payload.type == PromotionType.bundle and payload.bundle_price is None:
         raise HTTPException(status_code=400, detail="ต้องระบุราคาเซ็ต")
     for item_in in payload.items:
-        if db.get(Product, item_in.product_id) is None:
+        if db.query(Product).filter_by(id=item_in.product_id, shop_id=shop_id).first() is None:
             raise HTTPException(status_code=400, detail=f"Product {item_in.product_id} not found")
 
 
 @router.get("", response_model=list[PromotionOut])
-def list_promotions(db: Session = Depends(get_db)):
-    return [_serialize(p) for p in db.query(Promotion).order_by(Promotion.created_at.desc()).all()]
+def list_promotions(db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    return [_serialize(p) for p in db.query(Promotion).filter_by(shop_id=membership.shop_id).order_by(Promotion.created_at.desc()).all()]
 
 
 @router.post("", response_model=PromotionOut)
-def create_promotion(payload: PromotionIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    _validate_payload(payload, db)
+def create_promotion(payload: PromotionIn, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    _validate_payload(payload, db, membership.shop_id)
     promotion = Promotion(
+        shop_id=membership.shop_id,
         name=payload.name,
         type=payload.type,
         is_active=payload.is_active,
@@ -122,11 +123,11 @@ def create_promotion(payload: PromotionIn, db: Session = Depends(get_db), user: 
 
 
 @router.put("/{promotion_id}", response_model=PromotionOut)
-def update_promotion(promotion_id: int, payload: PromotionIn, db: Session = Depends(get_db)):
-    promotion = db.get(Promotion, promotion_id)
+def update_promotion(promotion_id: int, payload: PromotionIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    promotion = db.query(Promotion).filter_by(id=promotion_id, shop_id=membership.shop_id).first()
     if promotion is None:
         raise HTTPException(status_code=404, detail="Promotion not found")
-    _validate_payload(payload, db)
+    _validate_payload(payload, db, membership.shop_id)
 
     promotion.name = payload.name
     promotion.type = payload.type
@@ -149,8 +150,8 @@ def update_promotion(promotion_id: int, payload: PromotionIn, db: Session = Depe
 
 
 @router.post("/{promotion_id}/toggle", response_model=PromotionOut)
-def toggle_promotion(promotion_id: int, db: Session = Depends(get_db)):
-    promotion = db.get(Promotion, promotion_id)
+def toggle_promotion(promotion_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    promotion = db.query(Promotion).filter_by(id=promotion_id, shop_id=membership.shop_id).first()
     if promotion is None:
         raise HTTPException(status_code=404, detail="Promotion not found")
     promotion.is_active = not promotion.is_active

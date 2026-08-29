@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.api.settings import get_or_create_settings
 from app.db import get_db
-from app.deps import require_role
-from app.models import Product, Sale, SaleStatus, Shift, UserRole
+from app.deps import get_active_shop_membership, require_role
+from app.models import Product, Sale, SaleStatus, Shift, ShopMembership, UserRole
 from app.services.accounting import build_summary, get_daily_report, get_pos_income, get_product_performance
 
 router = APIRouter(
@@ -32,9 +32,9 @@ class SummaryOut(BaseModel):
 
 
 @router.get("/summary", response_model=SummaryOut)
-def get_summary(year: int, month: int | None = None, db: Session = Depends(get_db)):
-    settings = get_or_create_settings(db)
-    summary = build_summary(db, settings.shop_type, year, month)
+def get_summary(year: int, month: int | None = None, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    settings = get_or_create_settings(db, membership.shop_id)
+    summary = build_summary(db, settings.shop_type, year, month, membership.shop_id)
     return SummaryOut(
         year=summary["year"],
         month=summary["month"],
@@ -88,8 +88,8 @@ class DailyReportOut(BaseModel):
 
 
 @router.get("/products", response_model=list[ProductPerformanceOut])
-def get_product_performance_report(start: datetime, end: datetime, db: Session = Depends(get_db)):
-    rows = get_product_performance(db, start, end)
+def get_product_performance_report(start: datetime, end: datetime, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    rows = get_product_performance(db, start, end, membership.shop_id)
     return [
         ProductPerformanceOut(
             product_id=r["product_id"], name=r["name"], sku=r["sku"], quantity_sold=r["quantity_sold"], revenue=float(r["revenue"])
@@ -99,8 +99,8 @@ def get_product_performance_report(start: datetime, end: datetime, db: Session =
 
 
 @router.get("/daily", response_model=DailyReportOut)
-def get_daily_report_data(start: datetime, end: datetime, db: Session = Depends(get_db)):
-    return get_daily_report(db, start, end)
+def get_daily_report_data(start: datetime, end: datetime, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    return get_daily_report(db, start, end, membership.shop_id)
 
 
 class LowStockProductOut(BaseModel):
@@ -126,25 +126,25 @@ class TodaySummaryOut(BaseModel):
 
 
 @router.get("/today", response_model=TodaySummaryOut)
-def get_today_summary(db: Session = Depends(get_db)):
+def get_today_summary(db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
     now = datetime.utcnow()
     start = datetime(now.year, now.month, now.day)
     end = start + timedelta(days=1)
 
     sale_count = (
         db.query(Sale)
-        .filter(Sale.status == SaleStatus.completed, Sale.completed_at >= start, Sale.completed_at < end)
+        .filter(Sale.shop_id == membership.shop_id, Sale.status == SaleStatus.completed, Sale.completed_at >= start, Sale.completed_at < end)
         .count()
     )
-    total_revenue = float(get_pos_income(db, start, end))
+    total_revenue = float(get_pos_income(db, start, end, membership.shop_id))
 
     low_stock = (
         db.query(Product)
-        .filter(Product.stock_quantity <= Product.low_stock_threshold)
+        .filter(Product.shop_id == membership.shop_id, Product.stock_quantity <= Product.low_stock_threshold)
         .order_by(Product.stock_quantity)
         .all()
     )
-    open_shifts = db.query(Shift).filter(Shift.closed_at.is_(None)).all()
+    open_shifts = db.query(Shift).filter(Shift.shop_id == membership.shop_id, Shift.closed_at.is_(None)).all()
 
     return TodaySummaryOut(
         sale_count=sale_count,

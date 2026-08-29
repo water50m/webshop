@@ -313,7 +313,7 @@ export default function ProductsPage() {
     <main className="p-4 md:p-6 lg:p-8">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="flex items-center gap-2 pl-14 text-xl font-semibold md:pl-0">
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
             <Package className="h-5 w-5 text-amber-500" />
             สินค้า/สต๊อก
           </h1>
@@ -706,25 +706,25 @@ export default function ProductsPage() {
                   <label className="block text-xs text-gray-500 mb-1">
                     สต๊อกปัจจุบัน: <span className="font-semibold text-gray-700">{editingStock}</span>
                   </label>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-[7rem_minmax(0,1fr)_auto]">
                     <input
                       type="number"
                       placeholder="+/- จำนวน"
                       value={modalAdjustChange}
                       onChange={(e) => setModalAdjustChange(e.target.value)}
-                      className="border rounded px-2 py-1.5 w-28"
+                      className="w-full border rounded px-2 py-1.5 sm:w-28"
                     />
                     <input
                       type="text"
                       placeholder="หมายเหตุ"
                       value={modalAdjustNote}
                       onChange={(e) => setModalAdjustNote(e.target.value)}
-                      className="border rounded px-2 py-1.5 flex-1"
+                      className="min-w-0 border rounded px-2 py-1.5"
                     />
                     <button
                       type="button"
                       onClick={handleModalAdjust}
-                      className="px-3 py-1.5 rounded border hover:bg-gray-50 transition-colors"
+                      className="col-span-2 min-h-11 whitespace-nowrap rounded border px-3 py-1.5 hover:bg-gray-50 transition-colors sm:col-span-1"
                     >
                       ปรับสต๊อก
                     </button>
@@ -763,13 +763,13 @@ export default function ProductsPage() {
                       <p className="text-xs text-gray-400">ยังไม่มีตัวเลือกเสริม</p>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_auto]">
                     <input
                       type="text"
                       placeholder="ชื่อตัวเลือก เช่น ไข่ต้ม"
                       value={newModifierName}
                       onChange={(e) => setNewModifierName(e.target.value)}
-                      className="border rounded px-2 py-1.5 flex-1"
+                      className="col-span-2 min-w-0 border rounded px-2 py-1.5 sm:col-span-1"
                     />
                     <input
                       type="number"
@@ -777,12 +777,12 @@ export default function ProductsPage() {
                       placeholder="ราคาเสริม"
                       value={newModifierPrice}
                       onChange={(e) => setNewModifierPrice(e.target.value)}
-                      className="border rounded px-2 py-1.5 w-24"
+                      className="w-full border rounded px-2 py-1.5 sm:w-24"
                     />
                     <button
                       type="button"
                       onClick={handleAddModifier}
-                      className="px-3 py-1.5 rounded border hover:bg-gray-50 transition-colors"
+                      className="min-h-11 whitespace-nowrap rounded border px-3 py-1.5 hover:bg-gray-50 transition-colors"
                     >
                       เพิ่ม
                     </button>
@@ -812,11 +812,11 @@ export default function ProductsPage() {
                     ))}
                     {recipeItems.length === 0 && <p className="text-xs text-gray-400">ยังไม่ได้ตั้งสูตร</p>}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
                     <select
                       value={newRecipeIngredientId}
                       onChange={(e) => setNewRecipeIngredientId(e.target.value)}
-                      className="border rounded px-2 py-1.5 flex-1"
+                      className="col-span-2 min-w-0 border rounded px-2 py-1.5 sm:col-span-1"
                     >
                       <option value="">เลือกวัตถุดิบ</option>
                       {ingredients.map((i) => (
@@ -831,12 +831,12 @@ export default function ProductsPage() {
                       placeholder="จำนวน/หน่วย"
                       value={newRecipeQty}
                       onChange={(e) => setNewRecipeQty(e.target.value)}
-                      className="border rounded px-2 py-1.5 w-28"
+                      className="w-full border rounded px-2 py-1.5 sm:w-28"
                     />
                     <button
                       type="button"
                       onClick={handleAddRecipeItem}
-                      className="px-3 py-1.5 rounded border hover:bg-gray-50 transition-colors"
+                      className="min-h-11 whitespace-nowrap rounded border px-3 py-1.5 hover:bg-gray-50 transition-colors"
                     >
                       เพิ่ม
                     </button>

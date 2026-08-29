@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_role
-from app.models import BridgeCommandStatus, PrintBridge, PrintBridgeCommand, UserRole
+from app.deps import get_active_shop_membership, get_current_user, require_role
+from app.models import BridgeCommandStatus, PrintBridge, PrintBridgeCommand, ShopMembership, UserRole
 
 router = APIRouter(prefix="/api/bridges", tags=["print-bridges"], dependencies=[Depends(get_current_user)])
 manage_only = Depends(require_role(UserRole.owner, UserRole.manager))
@@ -75,15 +75,15 @@ def _serialize(bridge: PrintBridge) -> BridgeOut:
 
 
 @router.get("", response_model=list[BridgeOut], dependencies=[manage_only])
-def list_bridges(db: Session = Depends(get_db)):
-    return [_serialize(row) for row in db.query(PrintBridge).order_by(PrintBridge.name).all()]
+def list_bridges(db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    return [_serialize(row) for row in db.query(PrintBridge).filter_by(shop_id=membership.shop_id).order_by(PrintBridge.name).all()]
 
 
 @router.post("", response_model=CreatedBridgeOut, dependencies=[manage_only])
-def create_bridge(payload: CreateBridgeIn, db: Session = Depends(get_db)):
-    if db.query(PrintBridge).filter(PrintBridge.name == payload.name).first():
+def create_bridge(payload: CreateBridgeIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    if db.query(PrintBridge).filter_by(shop_id=membership.shop_id, name=payload.name).first():
         raise HTTPException(status_code=400, detail="มีชื่อ Bridge นี้แล้ว")
-    bridge = PrintBridge(name=payload.name, device_token=secrets.token_urlsafe(32))
+    bridge = PrintBridge(shop_id=membership.shop_id, name=payload.name, device_token=secrets.token_urlsafe(32))
     db.add(bridge)
     db.commit()
     db.refresh(bridge)
@@ -91,15 +91,17 @@ def create_bridge(payload: CreateBridgeIn, db: Session = Depends(get_db)):
 
 
 @router.get("/{bridge_id}/commands", response_model=list[CommandOut], dependencies=[manage_only])
-def list_commands(bridge_id: int, db: Session = Depends(get_db)):
+def list_commands(bridge_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    if not db.query(PrintBridge).filter_by(id=bridge_id, shop_id=membership.shop_id).first():
+        raise HTTPException(status_code=404, detail="ไม่พบ Print Bridge")
     return [CommandOut(id=row.id, command=row.command, status=row.status.value, result=row.result, created_at=row.created_at)
             for row in db.query(PrintBridgeCommand).filter(PrintBridgeCommand.bridge_id == bridge_id)
             .order_by(PrintBridgeCommand.created_at.desc()).limit(12).all()]
 
 
 @router.post("/{bridge_id}/commands", response_model=CommandOut, dependencies=[manage_only])
-def queue_command(bridge_id: int, payload: QueueCommandIn, db: Session = Depends(get_db)):
-    if not db.get(PrintBridge, bridge_id):
+def queue_command(bridge_id: int, payload: QueueCommandIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    if not db.query(PrintBridge).filter_by(id=bridge_id, shop_id=membership.shop_id).first():
         raise HTTPException(status_code=404, detail="ไม่พบ Print Bridge")
     allowed = {"scan_bluetooth", "connect_printer", "reconnect_printer", "test_printer", "test_bridge", "configure_wifi"}
     if payload.command not in allowed:

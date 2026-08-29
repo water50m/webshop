@@ -16,24 +16,24 @@ from app.models import (
 from app.services.stock import adjust_ingredient_stock, adjust_stock
 
 
-def get_open_session(db: Session) -> StocktakeSession | None:
-    return db.query(StocktakeSession).filter(StocktakeSession.status == StocktakeStatus.open).first()
+def get_open_session(db: Session, shop_id: int) -> StocktakeSession | None:
+    return db.query(StocktakeSession).filter(StocktakeSession.shop_id == shop_id, StocktakeSession.status == StocktakeStatus.open).first()
 
 
-def open_session(db: Session, user: User, note: str = "") -> StocktakeSession:
-    if get_open_session(db) is not None:
+def open_session(db: Session, user: User, shop_id: int, note: str = "") -> StocktakeSession:
+    if get_open_session(db, shop_id) is not None:
         raise ValueError("มีรอบนับสต๊อกที่เปิดอยู่แล้ว ต้องปิดรอบเดิมก่อน")
 
-    settings = db.get(ShopSettings, 1)
+    settings = db.query(ShopSettings).filter_by(shop_id=shop_id).first()
     mode = settings.inventory_mode if settings else InventoryMode.simple
     entity_type = "ingredient" if mode == InventoryMode.recipe else "product"
 
-    session = StocktakeSession(opened_by_user_id=user.id, note=note, entity_type=entity_type)
+    session = StocktakeSession(shop_id=shop_id, opened_by_user_id=user.id, note=note, entity_type=entity_type)
     db.add(session)
     db.flush()
 
     if entity_type == "ingredient":
-        for ingredient in db.query(Ingredient).order_by(Ingredient.name).all():
+        for ingredient in db.query(Ingredient).filter_by(shop_id=shop_id).order_by(Ingredient.name).all():
             db.add(
                 StocktakeLine(
                     session_id=session.id,
@@ -42,7 +42,7 @@ def open_session(db: Session, user: User, note: str = "") -> StocktakeSession:
                 )
             )
     else:
-        for product in db.query(Product).order_by(Product.name).all():
+        for product in db.query(Product).filter_by(shop_id=shop_id).order_by(Product.name).all():
             db.add(
                 StocktakeLine(
                     session_id=session.id,

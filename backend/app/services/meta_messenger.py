@@ -12,8 +12,9 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import ChannelType, Conversation, DraftOrder, DraftOrderStatus, Message, Product, ShopSettings
+from app.models import ChannelType, Conversation, DraftOrder, DraftOrderStatus, Message, Product, ShopSettings, User
 from app.services.promptpay import generate_promptpay_payload
+from app.services.meta_tokens import MetaTokenConfigurationError, channel_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -56,15 +57,24 @@ def _order_button_title(product: Product) -> str:
     return f"{prefix}{product.name[:remaining_name_length]} {price}"
 
 
-def _send(page_id: str, recipient_id: str, message: dict) -> dict | None:
+def _channel_token(conversation: Conversation) -> str:
+    try:
+        return channel_access_token(conversation.channel) or settings.meta_page_access_token
+    except MetaTokenConfigurationError:
+        logger.warning("Messenger response skipped because the Page token cannot be decrypted")
+        return ""
+
+
+def _send(page_id: str, recipient_id: str, message: dict, access_token: str | None = None) -> dict | None:
     """Send one Messenger message without allowing Meta errors to fail a webhook."""
-    if not settings.meta_page_access_token:
+    token = access_token or settings.meta_page_access_token
+    if not token:
         logger.info("Messenger response skipped because META_PAGE_ACCESS_TOKEN is not configured")
         return None
     try:
         response = httpx.post(
             f"{_GRAPH_API_BASE_URL}/{page_id}/messages",
-            params={"access_token": settings.meta_page_access_token},
+            params={"access_token": token},
             json={"recipient": {"id": recipient_id}, "message": message},
             timeout=10.0,
         )
@@ -77,7 +87,12 @@ def _send(page_id: str, recipient_id: str, message: dict) -> dict | None:
 
 
 def _record_outgoing_message(
-    db: Session, conversation: Conversation, text: str, payload: dict, automation_key: str | None = None
+    db: Session,
+    conversation: Conversation,
+    text: str,
+    payload: dict,
+    automation_key: str | None = None,
+    sent_by: User | None = None,
 ) -> None:
     recorded_payload = dict(payload)
     if automation_key:
@@ -88,6 +103,7 @@ def _record_outgoing_message(
             direction="out",
             text=text,
             raw_payload=recorded_payload,
+            sent_by_user_id=sent_by.id if sent_by is not None else None,
         )
     )
     conversation.last_message_at = datetime.utcnow()
@@ -126,7 +142,7 @@ def send_verified_answer(
     automation_key = f"verified_answer:{sha256(answer.encode('utf-8')).hexdigest()}"
     if _automated_reply_sent_twice(db, conversation, automation_key):
         return False
-    response = _send(page_id, recipient_id, {"text": answer})
+    response = _send(page_id, recipient_id, {"text": answer}, _channel_token(conversation))
     if response is None:
         return False
     _record_outgoing_message(db, conversation, answer, response, automation_key)
@@ -201,7 +217,7 @@ def send_menu_answer(
     except (ImportError, OSError, RuntimeError):
         logger.warning("Unable to render menu response image", exc_info=True)
         return send_verified_answer(db, conversation, page_id, recipient_id, text)
-    response = _send_image(page_id, recipient_id, image, "menu-answer.png")
+    response = _send_image(page_id, recipient_id, image, "menu-answer.png", _channel_token(conversation))
     if response is None:
         return False
     _record_outgoing_message(db, conversation, "[รูปเมนูที่พร้อมรับออเดอร์]", response, automation_key)
@@ -216,7 +232,7 @@ def send_menu(
         return False
     options = list_menu_options(db)
     if not options:
-        response = _send(page_id, recipient_id, {"text": "ขออภัย ขณะนี้ยังไม่มีเมนูให้เลือกค่ะ"})
+        response = _send(page_id, recipient_id, {"text": "ขออภัย ขณะนี้ยังไม่มีเมนูให้เลือกค่ะ"}, _channel_token(conversation))
         if response is None:
             return False
         _record_outgoing_message(db, conversation, "ขออภัย ขณะนี้ยังไม่มีเมนูให้เลือกค่ะ", response, "menu")
@@ -256,7 +272,7 @@ def send_menu(
                 },
             }
         }
-        response = _send(page_id, recipient_id, message)
+        response = _send(page_id, recipient_id, message, _channel_token(conversation))
         if response is None:
             continue
         # One greeting can result in several Messenger cards.  Tag only the
@@ -270,14 +286,14 @@ def send_selection_confirmation(
     db: Session, conversation: Conversation, page_id: str, recipient_id: str, product: Product
 ) -> bool:
     text = f"รับรายการ: {product.name} ราคา ฿{float(product.price):,.2f} แล้วค่ะ"
-    response = _send(page_id, recipient_id, {"text": text})
+    response = _send(page_id, recipient_id, {"text": text}, _channel_token(conversation))
     if response is None:
         return False
     _record_outgoing_message(db, conversation, text, response)
     return True
 
 
-def send_saved_delivery_note(db: Session, conversation: Conversation) -> bool:
+def send_saved_delivery_note(db: Session, conversation: Conversation, sent_by: User) -> bool:
     """Send the staff-saved delivery message only when the staff presses the button."""
     text = conversation.delivery_note.strip()
     if not text:
@@ -288,14 +304,15 @@ def send_saved_delivery_note(db: Session, conversation: Conversation) -> bool:
         conversation.channel.external_id,
         conversation.customer.external_user_id,
         {"text": text},
+        _channel_token(conversation),
     )
     if response is None:
         return False
-    _record_outgoing_message(db, conversation, text, response)
+    _record_outgoing_message(db, conversation, text, response, sent_by=sent_by)
     return True
 
 
-def send_manual_text(db: Session, conversation: Conversation, text: str) -> bool:
+def send_manual_text(db: Session, conversation: Conversation, text: str, sent_by: User) -> bool:
     """Send a staff-composed Inbox reply and retain it as an outgoing message."""
     reply = text.strip()
     if not reply or conversation.channel.type != ChannelType.facebook_page:
@@ -304,14 +321,15 @@ def send_manual_text(db: Session, conversation: Conversation, text: str) -> bool
         conversation.channel.external_id,
         conversation.customer.external_user_id,
         {"text": reply},
+        _channel_token(conversation),
     )
     if response is None:
         return False
-    _record_outgoing_message(db, conversation, reply, response)
+    _record_outgoing_message(db, conversation, reply, response, sent_by=sent_by)
     return True
 
 
-def send_manual_photo(db: Session, conversation: Conversation, image: bytes, filename: str) -> bool:
+def send_manual_photo(db: Session, conversation: Conversation, image: bytes, filename: str, sent_by: User) -> bool:
     """Forward a staff-captured photo without writing the image to local storage."""
     if conversation.channel.type != ChannelType.facebook_page:
         return False
@@ -320,26 +338,28 @@ def send_manual_photo(db: Session, conversation: Conversation, image: bytes, fil
         conversation.customer.external_user_id,
         image,
         filename,
+        _channel_token(conversation),
     )
     if response is None:
         return False
     # The database records delivery metadata only. The image bytes remain in
     # request memory and are discarded as soon as this request completes.
-    _record_outgoing_message(db, conversation, "[ส่งรูปภาพจากร้าน]", response)
+    _record_outgoing_message(db, conversation, "[ส่งรูปภาพจากร้าน]", response, sent_by=sent_by)
     return True
 
 
 def _send_image(
-    page_id: str, recipient_id: str, image: bytes, filename: str = "promptpay-qr.png"
+    page_id: str, recipient_id: str, image: bytes, filename: str = "promptpay-qr.png", access_token: str | None = None
 ) -> dict | None:
     """Send a generated PNG through the Messenger Send API as an image."""
-    if not settings.meta_page_access_token:
+    token = access_token or settings.meta_page_access_token
+    if not token:
         logger.info("Messenger QR response skipped because META_PAGE_ACCESS_TOKEN is not configured")
         return None
     try:
         response = httpx.post(
             f"{_GRAPH_API_BASE_URL}/{page_id}/messages",
-            params={"access_token": settings.meta_page_access_token},
+            params={"access_token": token},
             data={
                 "recipient": json.dumps({"id": recipient_id}),
                 "message": json.dumps({"attachment": {"type": "image", "payload": {}}}),
@@ -391,7 +411,7 @@ def send_promptpay_qr(db: Session, conversation: Conversation, page_id: str, rec
         logger.warning("Unable to render PromptPay QR", exc_info=True)
         return False
 
-    image_response = _send_image(page_id, recipient_id, image)
+    image_response = _send_image(page_id, recipient_id, image, access_token=_channel_token(conversation))
     if image_response is None:
         return False
     _record_outgoing_message(db, conversation, "[QR code สำหรับสแกนจ่าย]", image_response, automation_key)
@@ -402,7 +422,7 @@ def send_promptpay_qr(db: Session, conversation: Conversation, page_id: str, rec
         else "QR code สำหรับสแกนจ่ายแบบปกติ"
     )
     text += "\nสำหรับการจ่ายด้วยวิธีอื่นกรุณารอสักครู่ครับ"
-    text_response = _send(page_id, recipient_id, {"text": text})
+    text_response = _send(page_id, recipient_id, {"text": text}, _channel_token(conversation))
     if text_response is not None:
         _record_outgoing_message(db, conversation, text, text_response)
     return True
@@ -425,7 +445,7 @@ def _build_order_confirmation_text(draft_order: DraftOrder) -> str:
     return "\n".join(lines)
 
 
-def send_order_confirmation(db: Session, draft_order: DraftOrder) -> bool:
+def send_order_confirmation(db: Session, draft_order: DraftOrder, sent_by: User | None = None) -> bool:
     """Send a receipt-style confirmation after a staff member confirms an order.
 
     Only Facebook Page conversations can use the Messenger Send API here. A
@@ -441,8 +461,9 @@ def send_order_confirmation(db: Session, draft_order: DraftOrder) -> bool:
         conversation.channel.external_id,
         conversation.customer.external_user_id,
         {"text": text},
+        _channel_token(conversation),
     )
     if response is None:
         return False
-    _record_outgoing_message(db, conversation, text, response)
+    _record_outgoing_message(db, conversation, text, response, sent_by=sent_by)
     return True

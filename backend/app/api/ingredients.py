@@ -3,8 +3,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_role
-from app.models import Ingredient, RecipeItem, StockMovementReason, User, UserRole
+from app.deps import get_active_shop_membership, get_current_user, require_role
+from app.models import Ingredient, RecipeItem, ShopMembership, StockMovementReason, User, UserRole
 from app.services.stock import adjust_ingredient_stock
 
 router = APIRouter(
@@ -45,13 +45,13 @@ def _serialize(ingredient: Ingredient) -> IngredientOut:
 
 
 @router.get("", response_model=list[IngredientOut])
-def list_ingredients(db: Session = Depends(get_db)):
-    return [_serialize(i) for i in db.query(Ingredient).order_by(Ingredient.name).all()]
+def list_ingredients(db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    return [_serialize(i) for i in db.query(Ingredient).filter_by(shop_id=membership.shop_id).order_by(Ingredient.name).all()]
 
 
 @router.post("", response_model=IngredientOut, dependencies=[manage_only])
-def create_ingredient(payload: IngredientIn, db: Session = Depends(get_db)):
-    ingredient = Ingredient(name=payload.name, unit=payload.unit, low_stock_threshold=payload.low_stock_threshold)
+def create_ingredient(payload: IngredientIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    ingredient = Ingredient(shop_id=membership.shop_id, name=payload.name, unit=payload.unit, low_stock_threshold=payload.low_stock_threshold)
     db.add(ingredient)
     db.commit()
     db.refresh(ingredient)
@@ -59,8 +59,8 @@ def create_ingredient(payload: IngredientIn, db: Session = Depends(get_db)):
 
 
 @router.put("/{ingredient_id}", response_model=IngredientOut, dependencies=[manage_only])
-def update_ingredient(ingredient_id: int, payload: IngredientIn, db: Session = Depends(get_db)):
-    ingredient = db.get(Ingredient, ingredient_id)
+def update_ingredient(ingredient_id: int, payload: IngredientIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    ingredient = db.query(Ingredient).filter_by(id=ingredient_id, shop_id=membership.shop_id).first()
     if ingredient is None:
         raise HTTPException(status_code=404, detail="ไม่พบวัตถุดิบนี้")
     ingredient.name = payload.name
@@ -72,8 +72,8 @@ def update_ingredient(ingredient_id: int, payload: IngredientIn, db: Session = D
 
 
 @router.delete("/{ingredient_id}", dependencies=[manage_only])
-def delete_ingredient(ingredient_id: int, db: Session = Depends(get_db)):
-    ingredient = db.get(Ingredient, ingredient_id)
+def delete_ingredient(ingredient_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    ingredient = db.query(Ingredient).filter_by(id=ingredient_id, shop_id=membership.shop_id).first()
     if ingredient is None:
         raise HTTPException(status_code=404, detail="ไม่พบวัตถุดิบนี้")
     used = db.query(RecipeItem).filter(RecipeItem.ingredient_id == ingredient_id).first()
@@ -90,8 +90,9 @@ def adjust_ingredient_stock_endpoint(
     payload: StockAdjustmentIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    ingredient = db.get(Ingredient, ingredient_id)
+    ingredient = db.query(Ingredient).filter_by(id=ingredient_id, shop_id=membership.shop_id).first()
     if ingredient is None:
         raise HTTPException(status_code=404, detail="ไม่พบวัตถุดิบนี้")
     reason = StockMovementReason.restock if payload.change > 0 else StockMovementReason.adjustment

@@ -17,6 +17,18 @@ router = APIRouter(prefix="/webhooks/meta", tags=["meta-webhook"])
 logger = logging.getLogger(__name__)
 
 
+def _is_sticker_message(message: dict) -> bool:
+    """Recognize Messenger stickers without treating ordinary photos as greetings."""
+    if message.get("sticker_id"):
+        return True
+    for attachment in message.get("attachments", []):
+        if attachment.get("type") == "sticker" or attachment.get("sticker_id"):
+            return True
+        if (attachment.get("payload") or {}).get("sticker_id"):
+            return True
+    return False
+
+
 def _inbox_message_event(conversation, message) -> dict:
     """Build the exact persisted state that the Inbox needs; no follow-up read is required in the browser."""
     primary_label, payment_label = label_slots(conversation)
@@ -27,9 +39,11 @@ def _inbox_message_event(conversation, message) -> dict:
             "channel_id": conversation.channel_id,
             "customer_id": conversation.customer_id,
             "customer_display_name": conversation.customer.display_name,
+            "customer_profile_image_url": conversation.customer.profile_image_url,
             "last_message_at": conversation.last_message_at.isoformat(),
             "status": conversation.status,
             "is_hidden": conversation.is_hidden,
+            "is_pinned": conversation.is_pinned,
             "unread_count": conversation.unread_count,
             "bill_count": conversation.bill_count,
             "primary_label": primary_label,
@@ -42,6 +56,7 @@ def _inbox_message_event(conversation, message) -> dict:
             "direction": message.direction,
             "text": message.text,
             "created_at": message.created_at.isoformat(),
+            "sent_by_display_name": None,
         },
         "draft_order": (
             {
@@ -50,6 +65,8 @@ def _inbox_message_event(conversation, message) -> dict:
                 "status": pending_draft.status.value,
                 "note": pending_draft.note,
                 "total": float(sum(item.unit_price * item.quantity for item in pending_draft.items)),
+                "confirmed_at": None,
+                "confirmed_by_display_name": None,
                 "items": [
                     {
                         "id": item.id,
@@ -159,7 +176,8 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
             message = messaging_event.get("message")
             if not sender_id or not message:
                 continue
-            text = message.get("text", "")
+            is_sticker = _is_sticker_message(message)
+            text = "[สติกเกอร์]" if is_sticker else message.get("text", "")
             incoming_message, conversation, classification, parser_result = ingest_incoming_message(
                 db=db,
                 channel_type=channel_type,
@@ -167,6 +185,7 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                 sender_external_id=sender_id,
                 text=text,
                 raw_payload=messaging_event,
+                parser_text="สวัสดี" if is_sticker else None,
             )
             # ingest_incoming_message commits before returning.  Publish only
             # this committed payload so Inbox never receives data that is not

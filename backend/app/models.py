@@ -94,6 +94,19 @@ class UserRole(str, enum.Enum):
     cashier = "cashier"
 
 
+class ShopMembershipRole(str, enum.Enum):
+    owner = "owner"
+    manager = "manager"
+    staff = "staff"
+
+
+class ChannelMembershipRole(str, enum.Enum):
+    page_owner = "page_owner"
+    page_manager = "page_manager"
+    page_staff = "page_staff"
+    viewer = "viewer"
+
+
 class SaleAuditAction(str, enum.Enum):
     void = "void"
     refund = "refund"
@@ -125,6 +138,34 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class Shop(Base):
+    __tablename__ = "shops"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    memberships: Mapped[list["ShopMembership"]] = relationship(back_populates="shop", cascade="all, delete-orphan")
+
+
+class ShopMembership(Base):
+    __tablename__ = "shop_memberships"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    role: Mapped[ShopMembershipRole] = mapped_column(Enum(ShopMembershipRole))
+    invited_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("shop_id", "user_id", name="uq_shop_membership"),)
+
+    shop: Mapped["Shop"] = relationship(back_populates="memberships")
+    user: Mapped["User"] = relationship(foreign_keys="ShopMembership.user_id")
+    invited_by: Mapped["User | None"] = relationship(foreign_keys="ShopMembership.invited_by_user_id")
+
+
 class Session(Base):
     __tablename__ = "sessions"
 
@@ -133,6 +174,42 @@ class Session(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+
+
+class MetaOAuthAttempt(Base):
+    """Short-lived, single-use state for selecting a Facebook Page after OAuth."""
+
+    __tablename__ = "meta_oauth_attempts"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    initiated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    purpose: Mapped[str] = mapped_column(String(40), default="connection")
+    code_verifier: Mapped[str] = mapped_column(String(128), default="")
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True)
+    # Meta app-scoped ID only.  This lets the Data Deletion Callback find the
+    # Pages that a person connected without storing their Facebook profile.
+    facebook_user_id: Mapped[str] = mapped_column(String(255), default="")
+    available_pages: Mapped[list] = mapped_column(JSON, default=list)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    callback_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    initiated_by: Mapped["User | None"] = relationship()
+
+
+class FacebookIdentity(Base):
+    """The stable, app-scoped Facebook identity of an SStore user."""
+
+    __tablename__ = "facebook_identities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    facebook_user_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_verified_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship()
 
@@ -152,11 +229,71 @@ class Channel(Base):
     external_id: Mapped[str] = mapped_column(String(255))  # page_id or ig_id
     name: Mapped[str] = mapped_column(String(255), default="")
     access_token: Mapped[str] = mapped_column(String(1024), default="")
+    connected_facebook_user_id: Mapped[str] = mapped_column(String(255), default="")
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("type", "external_id", name="uq_channel_type_external_id"),)
 
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="channel")
+    shop: Mapped["Shop | None"] = relationship()
+    memberships: Mapped[list["ChannelMembership"]] = relationship(back_populates="channel", cascade="all, delete-orphan")
+
+
+class DataDeletionRequest(Base):
+    """A minimal status record for an owner request or Meta deauthorization.
+
+    It deliberately retains no message, customer, access-token, or Facebook
+    profile data.  The confirmation code is what Meta and the requester use to
+    check that a page-scoped deletion has been completed.
+    """
+
+    __tablename__ = "data_deletion_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    confirmation_code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    page_external_id: Mapped[str] = mapped_column(String(255), default="")
+    request_source: Mapped[str] = mapped_column(String(40), default="owner_portal")
+    status: Mapped[str] = mapped_column(String(40), default="pending_verification")
+    requester_email: Mapped[str] = mapped_column(String(255), default="")
+    requester_name: Mapped[str] = mapped_column(String(255), default="")
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ChannelMembership(Base):
+    __tablename__ = "channel_memberships"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    role: Mapped[ChannelMembershipRole] = mapped_column(Enum(ChannelMembershipRole))
+    granted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("channel_id", "user_id", name="uq_channel_membership"),)
+
+    channel: Mapped["Channel"] = relationship(back_populates="memberships")
+    user: Mapped["User"] = relationship(foreign_keys="ChannelMembership.user_id")
+    granted_by: Mapped["User | None"] = relationship(foreign_keys="ChannelMembership.granted_by_user_id")
+
+
+class ChannelAuditLog(Base):
+    __tablename__ = "channel_audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id"))
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String(80))
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    channel: Mapped["Channel"] = relationship()
+    actor: Mapped["User | None"] = relationship(foreign_keys="ChannelAuditLog.actor_user_id")
+    target_user: Mapped["User | None"] = relationship(foreign_keys="ChannelAuditLog.target_user_id")
 
 
 class Customer(Base):
@@ -166,6 +303,7 @@ class Customer(Base):
     channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id"))
     external_user_id: Mapped[str] = mapped_column(String(255))  # PSID or IGSID
     display_name: Mapped[str] = mapped_column(String(255), default="")
+    profile_image_url: Mapped[str] = mapped_column(String(2000), default="")
     phone: Mapped[str] = mapped_column(String(50), default="")
     address: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -187,6 +325,7 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     status: Mapped[str] = mapped_column(String(30), default="open")
     is_hidden: Mapped[bool] = mapped_column(default=False)
+    is_pinned: Mapped[bool] = mapped_column(default=False)
     unread_count: Mapped[int] = mapped_column(default=0)
     bill_count: Mapped[int] = mapped_column(default=0)
     delivery_note: Mapped[str] = mapped_column(String(1000), default="")
@@ -227,9 +366,11 @@ class Message(Base):
     direction: Mapped[str] = mapped_column(String(10))  # "in" or "out"
     text: Mapped[str] = mapped_column(String(4000), default="")
     raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    sent_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")
+    sent_by: Mapped["User | None"] = relationship(foreign_keys="Message.sent_by_user_id")
 
 
 class ParserV2ConversationState(Base):
@@ -348,6 +489,7 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     sku: Mapped[str] = mapped_column(String(64), unique=True)
     name: Mapped[str] = mapped_column(String(255))
     category: Mapped[str] = mapped_column(String(100), default="")
@@ -406,6 +548,7 @@ class OrderOption(Base):
     __tablename__ = "order_options"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), unique=True)
     stock_mode: Mapped[str] = mapped_column(String(30), default="unlimited")
     stock_quantity: Mapped[int] = mapped_column(default=0)
@@ -428,6 +571,7 @@ class Ingredient(Base):
     __tablename__ = "ingredients"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     unit: Mapped[str] = mapped_column(String(50), default="")
     stock_quantity: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
@@ -466,6 +610,7 @@ class StocktakeSession(Base):
     __tablename__ = "stocktake_sessions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     status: Mapped[StocktakeStatus] = mapped_column(Enum(StocktakeStatus), default=StocktakeStatus.open)
     entity_type: Mapped[str] = mapped_column(String(20), default="product")
     opened_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
@@ -498,6 +643,7 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(50), default="")
     address: Mapped[str] = mapped_column(String(500), default="")
@@ -511,6 +657,7 @@ class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"))
     status: Mapped[PurchaseOrderStatus] = mapped_column(Enum(PurchaseOrderStatus), default=PurchaseOrderStatus.draft)
     note: Mapped[str] = mapped_column(String(500), default="")
@@ -541,6 +688,7 @@ class LoyaltyCustomer(Base):
     __tablename__ = "loyalty_customers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     phone: Mapped[str] = mapped_column(String(50), unique=True)
     name: Mapped[str] = mapped_column(String(255), default="")
     points: Mapped[int] = mapped_column(default=0)
@@ -566,6 +714,7 @@ class Shift(Base):
     __tablename__ = "shifts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     opened_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     opening_cash: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     opened_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -584,13 +733,16 @@ class DraftOrder(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"))
     status: Mapped[DraftOrderStatus] = mapped_column(Enum(DraftOrderStatus), default=DraftOrderStatus.pending)
+    source: Mapped[str] = mapped_column(String(20), default="parsed")
     note: Mapped[str] = mapped_column(String(1000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    confirmed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     conversation: Mapped["Conversation"] = relationship(back_populates="draft_orders")
     items: Mapped[list["DraftOrderItem"]] = relationship(back_populates="draft_order", cascade="all, delete-orphan")
+    confirmed_by: Mapped["User | None"] = relationship(foreign_keys="DraftOrder.confirmed_by_user_id")
 
 
 class DraftOrderItem(Base):
@@ -612,6 +764,7 @@ class Sale(Base):
     __tablename__ = "sales"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     receipt_no: Mapped[int | None] = mapped_column(nullable=True)
     status: Mapped[SaleStatus] = mapped_column(Enum(SaleStatus), default=SaleStatus.held)
     payment_method: Mapped[PaymentMethod | None] = mapped_column(Enum(PaymentMethod), nullable=True)
@@ -693,6 +846,7 @@ class Promotion(Base):
     __tablename__ = "promotions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     type: Mapped[PromotionType] = mapped_column(Enum(PromotionType))
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -724,6 +878,7 @@ class Expense(Base):
     __tablename__ = "expenses"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     category: Mapped[ExpenseCategory] = mapped_column(Enum(ExpenseCategory))
     amount: Mapped[float] = mapped_column(Numeric(10, 2))
     description: Mapped[str] = mapped_column(String(500), default="")
@@ -735,6 +890,7 @@ class ShopSettings(Base):
     __tablename__ = "shop_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, unique=True, index=True)
     shop_type: Mapped[ShopType] = mapped_column(Enum(ShopType), default=ShopType.individual)
     shop_name: Mapped[str] = mapped_column(String(255), default="")
     address: Mapped[str] = mapped_column(String(500), default="")
@@ -757,6 +913,7 @@ class PrintBridge(Base):
     __tablename__ = "print_bridges"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100), unique=True)
     device_token: Mapped[str] = mapped_column(String(128), unique=True)
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)

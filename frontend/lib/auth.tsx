@@ -15,7 +15,7 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const LOCK_STORAGE_KEY = "shop-sys-locked";
+const LOCK_STORAGE_KEY = "sstore-locked";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -23,6 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [locked, setLocked] = useState(false);
 
   const refresh = useCallback(async () => {
+    const timeout = window.setTimeout(() => setLoading(false), 10_000);
     try {
       const me = await api.me();
       setUser(me);
@@ -33,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
       }
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   }, []);

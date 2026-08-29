@@ -3,8 +3,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_role
-from app.models import InventoryMode, OrderParserMode, Product, ShopSettings, ShopType, UserRole
+from app.deps import get_active_shop_membership, get_current_user, require_role
+from app.models import InventoryMode, OrderParserMode, Product, ShopMembership, ShopSettings, ShopType, UserRole
 from app.services.line_notify import build_low_stock_message, send_line_message
 from app.services.promptpay import generate_promptpay_payload
 
@@ -46,10 +46,10 @@ class ShopSettingsIn(BaseModel):
     menu_answer_format: str = "text"
 
 
-def get_or_create_settings(db: Session) -> ShopSettings:
-    settings = db.get(ShopSettings, 1)
+def get_or_create_settings(db: Session, shop_id: int) -> ShopSettings:
+    settings = db.query(ShopSettings).filter_by(shop_id=shop_id).first()
     if settings is None:
-        settings = ShopSettings(id=1, shop_type=ShopType.individual)
+        settings = ShopSettings(shop_id=shop_id, shop_type=ShopType.individual)
         db.add(settings)
         db.commit()
         db.refresh(settings)
@@ -76,15 +76,15 @@ def _serialize(settings: ShopSettings) -> ShopSettingsOut:
 
 
 @router.get("", response_model=ShopSettingsOut)
-def get_settings(db: Session = Depends(get_db)):
-    return _serialize(get_or_create_settings(db))
+def get_settings(db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    return _serialize(get_or_create_settings(db, membership.shop_id))
 
 
 @router.put("", response_model=ShopSettingsOut, dependencies=[manage_only])
-def update_settings(payload: ShopSettingsIn, db: Session = Depends(get_db)):
+def update_settings(payload: ShopSettingsIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
     if payload.menu_answer_format not in {"text", "image"}:
         raise HTTPException(status_code=422, detail="รูปแบบคำตอบเมนูไม่ถูกต้อง")
-    settings = get_or_create_settings(db)
+    settings = get_or_create_settings(db, membership.shop_id)
     settings.shop_type = payload.shop_type
     settings.shop_name = payload.shop_name
     settings.address = payload.address
@@ -109,8 +109,8 @@ class PromptPayQrOut(BaseModel):
 
 
 @router.get("/promptpay-qr", response_model=PromptPayQrOut)
-def get_promptpay_qr(amount: float | None = None, db: Session = Depends(get_db)):
-    settings = get_or_create_settings(db)
+def get_promptpay_qr(amount: float | None = None, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    settings = get_or_create_settings(db, membership.shop_id)
     if not settings.promptpay_id:
         raise HTTPException(status_code=400, detail="ร้านยังไม่ได้ตั้งค่าหมายเลขพร้อมเพย์ในหน้าตั้งค่า")
     try:
@@ -126,9 +126,9 @@ class LineNotifyTestOut(BaseModel):
 
 
 @router.post("/test-line-notify", response_model=LineNotifyTestOut, dependencies=[manage_only])
-def test_line_notify(db: Session = Depends(get_db)):
-    settings = get_or_create_settings(db)
-    low_stock = db.query(Product).filter(Product.stock_quantity <= Product.low_stock_threshold).all()
+def test_line_notify(db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    settings = get_or_create_settings(db, membership.shop_id)
+    low_stock = db.query(Product).filter(Product.shop_id == membership.shop_id, Product.stock_quantity <= Product.low_stock_threshold).all()
     message = build_low_stock_message(low_stock) if low_stock else "ทดสอบการแจ้งเตือนสต๊อกใกล้หมดจากระบบ POS"
     try:
         send_line_message(settings.low_stock_line_token, settings.low_stock_line_target_id, message)

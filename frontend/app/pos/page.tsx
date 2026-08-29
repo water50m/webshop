@@ -785,14 +785,14 @@ export default function PosPage() {
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => changeQuantity(item.id, item.quantity - 1)}
-                              className="border rounded w-6"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded border"
                             >
                               -
                             </button>
                             <span>{item.quantity}</span>
                             <button
                               onClick={() => changeQuantity(item.id, item.quantity + 1)}
-                              className="border rounded w-6"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded border"
                             >
                               +
                             </button>

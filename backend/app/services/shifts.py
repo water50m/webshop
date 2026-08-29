@@ -5,19 +5,19 @@ from sqlalchemy.orm import Session
 from app.models import PaymentMethod, Sale, SaleStatus, Shift, User
 
 
-def get_open_shift(db: Session, user: User) -> Shift | None:
+def get_open_shift(db: Session, user: User, shop_id: int | None = None) -> Shift | None:
     return (
         db.query(Shift)
-        .filter(Shift.opened_by_user_id == user.id, Shift.closed_at.is_(None))
+        .filter(Shift.opened_by_user_id == user.id, Shift.shop_id == shop_id, Shift.closed_at.is_(None))
         .order_by(Shift.opened_at.desc())
         .first()
     )
 
 
-def open_shift(db: Session, user: User, opening_cash: float, note: str = "") -> Shift:
-    if get_open_shift(db, user) is not None:
+def open_shift(db: Session, user: User, opening_cash: float, note: str = "", shop_id: int | None = None) -> Shift:
+    if get_open_shift(db, user, shop_id) is not None:
         raise ValueError("คุณมีกะที่เปิดอยู่แล้ว กรุณาปิดกะเดิมก่อน")
-    shift = Shift(opened_by_user_id=user.id, opening_cash=opening_cash, note=note)
+    shift = Shift(shop_id=shop_id, opened_by_user_id=user.id, opening_cash=opening_cash, note=note)
     db.add(shift)
     db.flush()
     return shift

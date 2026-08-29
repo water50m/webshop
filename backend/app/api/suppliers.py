@@ -3,8 +3,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_role
-from app.models import Product, PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus, Supplier, User, UserRole
+from app.deps import get_active_shop_membership, get_current_user, require_role
+from app.models import Product, PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus, ShopMembership, Supplier, User, UserRole
 from app.services.purchasing import receive_purchase_order
 
 router = APIRouter(
@@ -35,13 +35,13 @@ def _serialize_supplier(s: Supplier) -> SupplierOut:
 
 
 @router.get("", response_model=list[SupplierOut])
-def list_suppliers(db: Session = Depends(get_db)):
-    return [_serialize_supplier(s) for s in db.query(Supplier).order_by(Supplier.name).all()]
+def list_suppliers(db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    return [_serialize_supplier(s) for s in db.query(Supplier).filter_by(shop_id=membership.shop_id).order_by(Supplier.name).all()]
 
 
 @router.post("", response_model=SupplierOut, dependencies=[manage_only])
-def create_supplier(payload: SupplierIn, db: Session = Depends(get_db)):
-    supplier = Supplier(**payload.model_dump())
+def create_supplier(payload: SupplierIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    supplier = Supplier(shop_id=membership.shop_id, **payload.model_dump())
     db.add(supplier)
     db.commit()
     db.refresh(supplier)
@@ -49,8 +49,8 @@ def create_supplier(payload: SupplierIn, db: Session = Depends(get_db)):
 
 
 @router.put("/{supplier_id}", response_model=SupplierOut, dependencies=[manage_only])
-def update_supplier(supplier_id: int, payload: SupplierIn, db: Session = Depends(get_db)):
-    supplier = db.get(Supplier, supplier_id)
+def update_supplier(supplier_id: int, payload: SupplierIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    supplier = db.query(Supplier).filter_by(id=supplier_id, shop_id=membership.shop_id).first()
     if supplier is None:
         raise HTTPException(status_code=404, detail="ไม่พบซัพพลายเออร์นี้")
     for key, value in payload.model_dump().items():
@@ -120,23 +120,23 @@ def _serialize_po(po: PurchaseOrder) -> PurchaseOrderOut:
 
 
 @po_router.get("", response_model=list[PurchaseOrderOut])
-def list_purchase_orders(status: str | None = None, db: Session = Depends(get_db)):
-    query = db.query(PurchaseOrder)
+def list_purchase_orders(status: str | None = None, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    query = db.query(PurchaseOrder).filter(PurchaseOrder.shop_id == membership.shop_id)
     if status:
         query = query.filter(PurchaseOrder.status == PurchaseOrderStatus(status))
     return [_serialize_po(po) for po in query.order_by(PurchaseOrder.created_at.desc()).all()]
 
 
 @po_router.post("", response_model=PurchaseOrderOut, dependencies=[manage_only])
-def create_purchase_order(payload: PurchaseOrderIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    supplier = db.get(Supplier, payload.supplier_id)
+def create_purchase_order(payload: PurchaseOrderIn, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    supplier = db.query(Supplier).filter_by(id=payload.supplier_id, shop_id=membership.shop_id).first()
     if supplier is None:
         raise HTTPException(status_code=404, detail="ไม่พบซัพพลายเออร์นี้")
-    po = PurchaseOrder(supplier_id=supplier.id, note=payload.note, created_by_user_id=user.id)
+    po = PurchaseOrder(shop_id=membership.shop_id, supplier_id=supplier.id, note=payload.note, created_by_user_id=user.id)
     db.add(po)
     db.flush()
     for item in payload.items:
-        product = db.get(Product, item.product_id)
+        product = db.query(Product).filter_by(id=item.product_id, shop_id=membership.shop_id).first()
         if product is None:
             raise HTTPException(status_code=404, detail="ไม่พบสินค้านี้")
         db.add(
@@ -154,8 +154,8 @@ def create_purchase_order(payload: PurchaseOrderIn, db: Session = Depends(get_db
 
 
 @po_router.post("/{po_id}/receive", response_model=PurchaseOrderOut, dependencies=[manage_only])
-def receive_purchase_order_endpoint(po_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    po = db.get(PurchaseOrder, po_id)
+def receive_purchase_order_endpoint(po_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    po = db.query(PurchaseOrder).filter_by(id=po_id, shop_id=membership.shop_id).first()
     if po is None:
         raise HTTPException(status_code=404, detail="ไม่พบใบสั่งซื้อนี้")
     try:
@@ -168,8 +168,8 @@ def receive_purchase_order_endpoint(po_id: int, db: Session = Depends(get_db), u
 
 
 @po_router.post("/{po_id}/cancel", response_model=PurchaseOrderOut, dependencies=[manage_only])
-def cancel_purchase_order(po_id: int, db: Session = Depends(get_db)):
-    po = db.get(PurchaseOrder, po_id)
+def cancel_purchase_order(po_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    po = db.query(PurchaseOrder).filter_by(id=po_id, shop_id=membership.shop_id).first()
     if po is None:
         raise HTTPException(status_code=404, detail="ไม่พบใบสั่งซื้อนี้")
     if po.status == PurchaseOrderStatus.received:

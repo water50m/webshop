@@ -7,6 +7,8 @@ from app.models import (
     DraftOrder,
     DraftOrderItem,
     DraftOrderStatus,
+    Channel,
+    Conversation,
     Expense,
     ExpenseCategory,
     Sale,
@@ -48,27 +50,31 @@ def _period_bounds(year: int, month: int | None) -> tuple[datetime, datetime]:
     return start, end
 
 
-def get_channel_order_income(db: Session, start: datetime, end: datetime) -> Decimal:
+def get_channel_order_income(db: Session, start: datetime, end: datetime, shop_id: int | None = None) -> Decimal:
     rows = (
         db.query(DraftOrderItem)
         .join(DraftOrder, DraftOrderItem.draft_order_id == DraftOrder.id)
+        .join(Conversation, DraftOrder.conversation_id == Conversation.id)
+        .join(Channel, Conversation.channel_id == Channel.id)
         .filter(
             DraftOrder.status == DraftOrderStatus.confirmed,
             DraftOrder.confirmed_at >= start,
             DraftOrder.confirmed_at < end,
+            Channel.shop_id == shop_id,
         )
         .all()
     )
     return sum((Decimal(str(item.unit_price)) * item.quantity for item in rows), Decimal("0"))
 
 
-def get_pos_income(db: Session, start: datetime, end: datetime) -> Decimal:
+def get_pos_income(db: Session, start: datetime, end: datetime, shop_id: int | None = None) -> Decimal:
     rows = (
         db.query(Sale)
         .filter(
             Sale.status == SaleStatus.completed,
             Sale.completed_at >= start,
             Sale.completed_at < end,
+            Sale.shop_id == shop_id,
         )
         .all()
     )
@@ -89,17 +95,18 @@ def get_sale_revenue(sale: Sale) -> Decimal:
     return subtotal - Decimal(str(sale.discount_amount))
 
 
-def get_income(db: Session, start: datetime, end: datetime) -> Decimal:
-    return get_channel_order_income(db, start, end) + get_pos_income(db, start, end)
+def get_income(db: Session, start: datetime, end: datetime, shop_id: int | None = None) -> Decimal:
+    return get_channel_order_income(db, start, end, shop_id) + get_pos_income(db, start, end, shop_id)
 
 
-def get_product_performance(db: Session, start: datetime, end: datetime) -> list[dict]:
+def get_product_performance(db: Session, start: datetime, end: datetime, shop_id: int | None = None) -> list[dict]:
     sales = (
         db.query(Sale)
         .filter(
             Sale.status == SaleStatus.completed,
             Sale.completed_at >= start,
             Sale.completed_at < end,
+            Sale.shop_id == shop_id,
         )
         .all()
     )
@@ -121,24 +128,27 @@ def get_product_performance(db: Session, start: datetime, end: datetime) -> list
     return sorted(stats.values(), key=lambda e: e["quantity_sold"], reverse=True)
 
 
-def get_daily_report(db: Session, start: datetime, end: datetime) -> dict:
+def get_daily_report(db: Session, start: datetime, end: datetime, shop_id: int | None = None) -> dict:
     """Return daily sales/expense series, the all-time POS top five, and POS order revenue."""
     sales = (
         db.query(Sale)
-        .filter(Sale.status == SaleStatus.completed, Sale.completed_at >= start, Sale.completed_at < end)
+        .filter(Sale.status == SaleStatus.completed, Sale.completed_at >= start, Sale.completed_at < end, Sale.shop_id == shop_id)
         .order_by(Sale.completed_at.desc())
         .all()
     )
     channel_orders = (
         db.query(DraftOrder)
+        .join(Conversation, DraftOrder.conversation_id == Conversation.id)
+        .join(Channel, Conversation.channel_id == Channel.id)
         .filter(
             DraftOrder.status == DraftOrderStatus.confirmed,
             DraftOrder.confirmed_at >= start,
             DraftOrder.confirmed_at < end,
+            Channel.shop_id == shop_id,
         )
         .all()
     )
-    expenses = db.query(Expense).filter(Expense.expense_date >= start.date(), Expense.expense_date < end.date()).all()
+    expenses = db.query(Expense).filter(Expense.shop_id == shop_id, Expense.expense_date >= start.date(), Expense.expense_date < end.date()).all()
 
     daily: dict[date, dict] = {}
     cursor = start.date()
@@ -168,7 +178,7 @@ def get_daily_report(db: Session, start: datetime, end: datetime) -> dict:
     for expense in expenses:
         daily[expense.expense_date]["expense"] += Decimal(str(expense.amount))
 
-    all_time_sales = db.query(Sale).filter(Sale.status == SaleStatus.completed).all()
+    all_time_sales = db.query(Sale).filter(Sale.shop_id == shop_id, Sale.status == SaleStatus.completed).all()
     top_stats: dict[object, dict] = {}
     for sale in all_time_sales:
         for item in sale.items:
@@ -207,13 +217,14 @@ def get_daily_report(db: Session, start: datetime, end: datetime) -> dict:
     }
 
 
-def get_pos_cogs(db: Session, start: datetime, end: datetime) -> Decimal:
+def get_pos_cogs(db: Session, start: datetime, end: datetime, shop_id: int | None = None) -> Decimal:
     rows = (
         db.query(Sale)
         .filter(
             Sale.status == SaleStatus.completed,
             Sale.completed_at >= start,
             Sale.completed_at < end,
+            Sale.shop_id == shop_id,
         )
         .all()
     )
@@ -226,11 +237,11 @@ def get_pos_cogs(db: Session, start: datetime, end: datetime) -> Decimal:
     return total
 
 
-def get_expense_breakdown(db: Session, start: date, end: date) -> dict[str, Decimal]:
+def get_expense_breakdown(db: Session, start: date, end: date, shop_id: int | None = None) -> dict[str, Decimal]:
     breakdown = {category.value: Decimal("0") for category in ExpenseCategory}
     rows = (
         db.query(Expense)
-        .filter(Expense.expense_date >= start, Expense.expense_date < end)
+        .filter(Expense.shop_id == shop_id, Expense.expense_date >= start, Expense.expense_date < end)
         .all()
     )
     for expense in rows:
@@ -265,12 +276,12 @@ def calculate_tax(shop_type: ShopType, net_profit: Decimal) -> Decimal:
     return _apply_brackets(net_profit, JURISTIC_BRACKETS)
 
 
-def build_summary(db: Session, shop_type: ShopType, year: int, month: int | None) -> dict:
+def build_summary(db: Session, shop_type: ShopType, year: int, month: int | None, shop_id: int | None = None) -> dict:
     start, end = _period_bounds(year, month)
-    income = get_income(db, start, end)
-    cogs = get_pos_cogs(db, start, end)
+    income = get_income(db, start, end, shop_id)
+    cogs = get_pos_cogs(db, start, end, shop_id)
     gross_profit = income - cogs
-    expense_breakdown = get_expense_breakdown(db, start.date(), end.date())
+    expense_breakdown = get_expense_breakdown(db, start.date(), end.date(), shop_id)
     total_expense = sum(expense_breakdown.values(), Decimal("0"))
     net_profit = income - total_expense
     tax_estimate = calculate_tax(shop_type, net_profit)

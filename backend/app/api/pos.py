@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.api.settings import get_or_create_settings
 from app.db import get_db
-from app.deps import get_current_user
-from app.models import PaymentMethod, Product, Sale, SaleItem, SaleStatus, User, UserRole
+from app.deps import get_active_shop_membership, get_current_user
+from app.models import PaymentMethod, Product, Sale, SaleItem, SaleStatus, ShopMembership, User, UserRole
 from app.services import loyalty as loyalty_service
 from app.services import pos as pos_service
 from app.services import shifts as shift_service
@@ -151,8 +151,8 @@ def _serialize(db: Session, sale: Sale) -> SaleOut:
     )
 
 
-def _get_sale(db: Session, sale_id: int) -> Sale:
-    sale = db.get(Sale, sale_id)
+def _get_sale(db: Session, sale_id: int, shop_id: int) -> Sale:
+    sale = db.query(Sale).filter_by(id=sale_id, shop_id=shop_id).first()
     if sale is None:
         raise HTTPException(status_code=404, detail="ไม่พบบิลนี้")
     return sale
@@ -165,8 +165,9 @@ def list_sales(
     end: datetime | None = None,
     receipt_no: int | None = None,
     db: Session = Depends(get_db),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    query = db.query(Sale)
+    query = db.query(Sale).filter(Sale.shop_id == membership.shop_id)
     if status:
         query = query.filter(Sale.status == SaleStatus(status))
     if start is not None:
@@ -179,22 +180,22 @@ def list_sales(
 
 
 @router.post("/sales", response_model=SaleOut)
-def create_sale(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    sale = pos_service.create_held_sale(db, user)
+def create_sale(db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    sale = pos_service.create_held_sale(db, user, membership.shop_id)
     db.commit()
     db.refresh(sale)
     return _serialize(db, sale)
 
 
 @router.get("/sales/{sale_id}", response_model=SaleOut)
-def get_sale(sale_id: int, db: Session = Depends(get_db)):
-    sale = _get_sale(db, sale_id)
+def get_sale(sale_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    sale = _get_sale(db, sale_id, membership.shop_id)
     return _serialize(db, sale)
 
 
 @router.put("/sales/{sale_id}", response_model=SaleOut)
-def update_sale(sale_id: int, payload: UpdateSaleIn, db: Session = Depends(get_db)):
-    sale = _get_sale(db, sale_id)
+def update_sale(sale_id: int, payload: UpdateSaleIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    sale = _get_sale(db, sale_id, membership.shop_id)
     if sale.status != SaleStatus.held:
         raise HTTPException(status_code=400, detail="แก้ไขได้เฉพาะบิลที่ยังพักอยู่")
     if payload.discount_amount is not None:
@@ -207,16 +208,16 @@ def update_sale(sale_id: int, payload: UpdateSaleIn, db: Session = Depends(get_d
 
 
 @router.post("/sales/{sale_id}/items", response_model=SaleOut)
-def add_sale_item(sale_id: int, payload: AddItemIn, db: Session = Depends(get_db)):
-    sale = _get_sale(db, sale_id)
+def add_sale_item(sale_id: int, payload: AddItemIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    sale = _get_sale(db, sale_id, membership.shop_id)
     if sale.status != SaleStatus.held:
         raise HTTPException(status_code=400, detail="แก้ไขได้เฉพาะบิลที่ยังพักอยู่")
 
     product = None
     if payload.product_id is not None:
-        product = db.get(Product, payload.product_id)
+        product = db.query(Product).filter_by(id=payload.product_id, shop_id=membership.shop_id).first()
     elif payload.code is not None:
-        product = db.query(Product).filter(Product.sku == payload.code).first()
+        product = db.query(Product).filter(Product.shop_id == membership.shop_id, Product.sku == payload.code).first()
     if product is None:
         raise HTTPException(status_code=404, detail="ไม่พบสินค้า")
 
@@ -230,8 +231,8 @@ def add_sale_item(sale_id: int, payload: AddItemIn, db: Session = Depends(get_db
 
 
 @router.put("/sales/{sale_id}/items/{item_id}", response_model=SaleOut)
-def update_sale_item(sale_id: int, item_id: int, payload: UpdateItemIn, db: Session = Depends(get_db)):
-    sale = _get_sale(db, sale_id)
+def update_sale_item(sale_id: int, item_id: int, payload: UpdateItemIn, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    sale = _get_sale(db, sale_id, membership.shop_id)
     if sale.status != SaleStatus.held:
         raise HTTPException(status_code=400, detail="แก้ไขได้เฉพาะบิลที่ยังพักอยู่")
     item = db.get(SaleItem, item_id)
@@ -244,8 +245,8 @@ def update_sale_item(sale_id: int, item_id: int, payload: UpdateItemIn, db: Sess
 
 
 @router.delete("/sales/{sale_id}/items/{item_id}", response_model=SaleOut)
-def remove_sale_item(sale_id: int, item_id: int, db: Session = Depends(get_db)):
-    sale = _get_sale(db, sale_id)
+def remove_sale_item(sale_id: int, item_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    sale = _get_sale(db, sale_id, membership.shop_id)
     if sale.status != SaleStatus.held:
         raise HTTPException(status_code=400, detail="แก้ไขได้เฉพาะบิลที่ยังพักอยู่")
     item = db.get(SaleItem, item_id)
@@ -263,14 +264,15 @@ def checkout_sale(
     payload: CheckoutIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    sale = _get_sale(db, sale_id)
-    shift = shift_service.get_open_shift(db, user)
+    sale = _get_sale(db, sale_id, membership.shop_id)
+    shift = shift_service.get_open_shift(db, user, membership.shop_id)
     if shift is None:
         raise HTTPException(status_code=400, detail="กรุณาเปิดกะก่อนทำการขาย")
     customer = None
     if payload.customer_phone:
-        customer = loyalty_service.find_or_create_customer(db, payload.customer_phone, payload.customer_name)
+        customer = loyalty_service.find_or_create_customer(db, payload.customer_phone, payload.customer_name, membership.shop_id)
     try:
         pos_service.checkout_sale(
             db,
@@ -289,8 +291,8 @@ def checkout_sale(
 
 
 @router.post("/sales/{sale_id}/void", response_model=SaleOut)
-def void_sale(sale_id: int, payload: VoidIn = VoidIn(), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    sale = _get_sale(db, sale_id)
+def void_sale(sale_id: int, payload: VoidIn = VoidIn(), db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    sale = _get_sale(db, sale_id, membership.shop_id)
     if sale.status == SaleStatus.completed and user.role == UserRole.cashier:
         raise HTTPException(status_code=403, detail="การยกเลิกบิลที่ชำระเงินแล้วต้องให้ผู้จัดการหรือเจ้าของร้านทำรายการ")
     try:
@@ -308,9 +310,9 @@ class PrintThermalOut(BaseModel):
 
 
 @router.post("/sales/{sale_id}/print-thermal", response_model=PrintThermalOut)
-def print_sale_thermal(sale_id: int, db: Session = Depends(get_db)):
-    sale = _get_sale(db, sale_id)
-    settings = get_or_create_settings(db)
+def print_sale_thermal(sale_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    sale = _get_sale(db, sale_id, membership.shop_id)
+    settings = get_or_create_settings(db, membership.shop_id)
     totals = pos_service.compute_totals(db, sale)
     data = build_escpos_receipt(sale, settings, totals)
     try:
@@ -326,10 +328,11 @@ def refund_sale(
     payload: RefundIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
     if user.role == UserRole.cashier:
         raise HTTPException(status_code=403, detail="การคืนเงินต้องให้ผู้จัดการหรือเจ้าของร้านทำรายการ")
-    sale = _get_sale(db, sale_id)
+    sale = _get_sale(db, sale_id, membership.shop_id)
     try:
         pos_service.refund_items(
             db, sale, [(i.item_id, i.quantity) for i in payload.items], user, note=payload.note

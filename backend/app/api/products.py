@@ -8,8 +8,8 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_role
-from app.models import Ingredient, Product, ProductModifier, RecipeItem, StockMovementReason, User, UserRole
+from app.deps import get_active_shop_membership, get_current_user, require_role
+from app.models import Ingredient, Product, ProductModifier, RecipeItem, ShopMembership, StockMovementReason, User, UserRole
 from app.services.promotions import get_discounted_price
 from app.services.stock import adjust_stock
 
@@ -96,6 +96,13 @@ def _serialize(db: Session, product: Product, user: User | None = None) -> Produ
     )
 
 
+def _get_product(db: Session, product_id: int, shop_id: int) -> Product:
+    product = db.query(Product).filter_by(id=product_id, shop_id=shop_id).first()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
+
+
 @router.get("", response_model=list[ProductOut])
 def list_products(
     search: str | None = None,
@@ -103,8 +110,9 @@ def list_products(
     low_stock: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    query = db.query(Product)
+    query = db.query(Product).filter(Product.shop_id == membership.shop_id)
     if search:
         query = query.filter(or_(Product.sku.ilike(f"%{search}%"), Product.name.ilike(f"%{search}%")))
     if category:
@@ -116,24 +124,25 @@ def list_products(
 
 
 @router.get("/categories", response_model=list[str])
-def list_categories(db: Session = Depends(get_db)):
-    rows = db.query(Product.category).filter(Product.category != "").distinct().order_by(Product.category).all()
+def list_categories(db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    rows = db.query(Product.category).filter(Product.shop_id == membership.shop_id, Product.category != "").distinct().order_by(Product.category).all()
     return [r[0] for r in rows]
 
 
 @router.get("/lookup", response_model=ProductOut)
-def lookup_product(code: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    product = db.query(Product).filter(Product.sku == code).first()
+def lookup_product(code: str, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    product = db.query(Product).filter(Product.shop_id == membership.shop_id, Product.sku == code).first()
     if product is None:
         raise HTTPException(status_code=404, detail="ไม่พบสินค้าตามรหัสนี้")
     return _serialize(db, product, user)
 
 
 @router.post("", response_model=ProductOut, dependencies=[manage_only])
-def create_product(payload: ProductIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if db.query(Product).filter(Product.sku == payload.sku).first() is not None:
+def create_product(payload: ProductIn, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    if db.query(Product).filter(Product.shop_id == membership.shop_id, Product.sku == payload.sku).first() is not None:
         raise HTTPException(status_code=400, detail="SKU นี้ถูกใช้ไปแล้ว")
     product = Product(
+        shop_id=membership.shop_id,
         sku=payload.sku,
         name=payload.name,
         category=payload.category,
@@ -152,11 +161,9 @@ def create_product(payload: ProductIn, db: Session = Depends(get_db), user: User
 
 
 @router.put("/{product_id}", response_model=ProductOut, dependencies=[manage_only])
-def update_product(product_id: int, payload: ProductIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-    existing = db.query(Product).filter(Product.sku == payload.sku, Product.id != product_id).first()
+def update_product(product_id: int, payload: ProductIn, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
+    product = _get_product(db, product_id, membership.shop_id)
+    existing = db.query(Product).filter(Product.shop_id == membership.shop_id, Product.sku == payload.sku, Product.id != product_id).first()
     if existing is not None:
         raise HTTPException(status_code=400, detail="SKU นี้ถูกใช้ไปแล้ว")
     product.sku = payload.sku
@@ -180,10 +187,9 @@ def upload_product_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+    product = _get_product(db, product_id, membership.shop_id)
     ext = ALLOWED_IMAGE_TYPES.get(file.content_type)
     if ext is None:
         raise HTTPException(status_code=400, detail="รองรับเฉพาะไฟล์ภาพ JPEG, PNG, WEBP หรือ GIF")
@@ -212,10 +218,9 @@ def adjust_product_stock(
     payload: StockAdjustmentIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+    product = _get_product(db, product_id, membership.shop_id)
     if product.stock_mode == "unlimited":
         raise HTTPException(status_code=400, detail="สินค้านี้ตั้งเป็นสต็อกไม่จำกัด จึงไม่ต้องปรับจำนวน")
     reason = StockMovementReason.restock if payload.change > 0 else StockMovementReason.adjustment
@@ -229,9 +234,9 @@ def adjust_product_stock(
 
 
 @router.post("/restock-all", response_model=BulkRestockOut, dependencies=[manage_only])
-def restock_all_products(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def restock_all_products(db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)):
     """Add ten units to every tracked product and keep an audit movement per product."""
-    products = db.query(Product).filter(Product.stock_mode != "unlimited").all()
+    products = db.query(Product).filter(Product.shop_id == membership.shop_id, Product.stock_mode != "unlimited").all()
     for product in products:
         adjust_stock(
             db,
@@ -272,20 +277,16 @@ def _serialize_recipe(product: Product) -> list[RecipeItemOut]:
 
 
 @router.get("/{product_id}/recipe", response_model=list[RecipeItemOut])
-def get_recipe(product_id: int, db: Session = Depends(get_db)):
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+def get_recipe(product_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    product = _get_product(db, product_id, membership.shop_id)
     return _serialize_recipe(product)
 
 
 @router.put("/{product_id}/recipe", response_model=list[RecipeItemOut], dependencies=[manage_only])
-def update_recipe(product_id: int, payload: list[RecipeItemIn], db: Session = Depends(get_db)):
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+def update_recipe(product_id: int, payload: list[RecipeItemIn], db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    product = _get_product(db, product_id, membership.shop_id)
     for ri in payload:
-        if db.get(Ingredient, ri.ingredient_id) is None:
+        if db.query(Ingredient).filter_by(id=ri.ingredient_id, shop_id=membership.shop_id).first() is None:
             raise HTTPException(status_code=400, detail=f"Ingredient {ri.ingredient_id} not found")
     for existing in list(product.recipe_items):
         db.delete(existing)
@@ -299,11 +300,9 @@ def update_recipe(product_id: int, payload: list[RecipeItemIn], db: Session = De
 
 @router.post("/{product_id}/modifiers", response_model=ProductOut, dependencies=[manage_only])
 def create_modifier(
-    product_id: int, payload: ProductModifierIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    product_id: int, payload: ProductModifierIn, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)
 ):
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+    product = _get_product(db, product_id, membership.shop_id)
     db.add(ProductModifier(product_id=product.id, name=payload.name, price_delta=payload.price_delta))
     db.commit()
     db.refresh(product)
@@ -317,10 +316,9 @@ def update_modifier(
     payload: ProductModifierIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    membership: ShopMembership = Depends(get_active_shop_membership),
 ):
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+    product = _get_product(db, product_id, membership.shop_id)
     modifier = db.get(ProductModifier, modifier_id)
     if modifier is None or modifier.product_id != product_id:
         raise HTTPException(status_code=404, detail="ไม่พบตัวเลือกเสริมนี้")
@@ -333,11 +331,9 @@ def update_modifier(
 
 @router.delete("/{product_id}/modifiers/{modifier_id}", response_model=ProductOut, dependencies=[manage_only])
 def delete_modifier(
-    product_id: int, modifier_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    product_id: int, modifier_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user), membership: ShopMembership = Depends(get_active_shop_membership)
 ):
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+    product = _get_product(db, product_id, membership.shop_id)
     modifier = db.get(ProductModifier, modifier_id)
     if modifier is None or modifier.product_id != product_id:
         raise HTTPException(status_code=404, detail="ไม่พบตัวเลือกเสริมนี้")

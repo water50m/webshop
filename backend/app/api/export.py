@@ -7,8 +7,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_role
-from app.models import Expense, Product, Sale, SaleStatus, UserRole
+from app.deps import get_active_shop_membership, get_current_user, require_role
+from app.models import Expense, Product, Sale, SaleStatus, ShopMembership, UserRole
 
 router = APIRouter(
     prefix="/api/export",
@@ -32,8 +32,8 @@ def _csv_response(filename: str, header: list[str], rows: list[list]) -> Streami
 
 
 @router.get("/products")
-def export_products(db: Session = Depends(get_db)):
-    products = db.query(Product).order_by(Product.name).all()
+def export_products(db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    products = db.query(Product).filter_by(shop_id=membership.shop_id).order_by(Product.name).all()
     rows = [
         [p.sku, p.name, p.category, float(p.price), float(p.cost_price), p.stock_quantity, p.low_stock_threshold]
         for p in products
@@ -46,8 +46,8 @@ def export_products(db: Session = Depends(get_db)):
 
 
 @router.get("/sales")
-def export_sales(start: datetime | None = None, end: datetime | None = None, db: Session = Depends(get_db)):
-    query = db.query(Sale).filter(Sale.status == SaleStatus.completed)
+def export_sales(start: datetime | None = None, end: datetime | None = None, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    query = db.query(Sale).filter(Sale.shop_id == membership.shop_id, Sale.status == SaleStatus.completed)
     if start is not None:
         query = query.filter(Sale.completed_at >= start)
     if end is not None:
@@ -75,8 +75,8 @@ def export_sales(start: datetime | None = None, end: datetime | None = None, db:
 
 
 @router.get("/expenses")
-def export_expenses(start: datetime | None = None, end: datetime | None = None, db: Session = Depends(get_db)):
-    query = db.query(Expense)
+def export_expenses(start: datetime | None = None, end: datetime | None = None, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
+    query = db.query(Expense).filter(Expense.shop_id == membership.shop_id)
     if start is not None:
         query = query.filter(Expense.expense_date >= start.date())
     if end is not None:

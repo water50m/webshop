@@ -41,7 +41,8 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
         if event.get("type") != "message":
             continue
         message = event.get("message", {})
-        if message.get("type") != "text":
+        message_type = message.get("type")
+        if message_type not in {"text", "sticker"}:
             continue
         sender_id = event.get("source", {}).get("userId")
         if not sender_id:
@@ -51,8 +52,9 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
             channel_type=ChannelType.line,
             channel_external_id=destination,
             sender_external_id=sender_id,
-            text=message.get("text", ""),
+            text="[สติกเกอร์]" if message_type == "sticker" else message.get("text", ""),
             raw_payload=event,
+            parser_text="สวัสดี" if message_type == "sticker" else None,
         )
 
     return {"status": "ok"}

@@ -103,6 +103,7 @@ export default function SettingsPage() {
         <SettingsIcon className="w-5 h-5 text-amber-500" />
         ตั้งค่าร้าน
       </h1>
+      {user?.role === "owner" && <a href="/facebook" className="mb-4 inline-flex rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">เชื่อม Facebook Page</a>}
       {error && <p className="text-red-600 mb-4">{error}</p>}
       {settings && (
         <div className="space-y-4">

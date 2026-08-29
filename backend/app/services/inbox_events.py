@@ -3,7 +3,7 @@
 import json
 from queue import Empty, Full, Queue
 from threading import Lock
-from typing import Iterator
+from typing import Callable, Iterator
 
 
 class InboxEventBroker:
@@ -27,7 +27,7 @@ class InboxEventBroker:
                 except (Empty, Full):
                     pass
 
-    def stream(self) -> Iterator[str]:
+    def stream(self, can_receive: Callable[[dict], bool] | None = None) -> Iterator[str]:
         subscriber: Queue[dict] = Queue(maxsize=100)
         with self._lock:
             self._subscribers.add(subscriber)
@@ -35,6 +35,8 @@ class InboxEventBroker:
             while True:
                 try:
                     payload = subscriber.get(timeout=20)
+                    if can_receive is not None and not can_receive(payload):
+                        continue
                     yield f"event: inbox.message\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
                 except Empty:
                     # Keep proxies and browser connections alive while there

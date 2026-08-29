@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "shop-sys back-office",
+  title: "SStore",
   description: "ระบบจัดการร้านค้า: POS, สต๊อก, โปรโมชั่น, บัญชี",
 };
 
