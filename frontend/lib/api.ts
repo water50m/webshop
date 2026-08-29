@@ -218,6 +218,8 @@ export type ChannelMember = {
   user_id: number;
   username: string;
   display_name: string;
+  facebook_name: string;
+  profile_picture_url: string;
   role: "page_owner" | "page_manager" | "page_staff" | "viewer";
   is_active: boolean;
 };

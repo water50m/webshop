@@ -197,13 +197,17 @@ def oauth_callback(code: str | None = None, state: str | None = None, error: str
             raise ValueError("missing access token")
         profile_response = httpx.get(
             f"{_GRAPH_API}/me",
-            params={"fields": "id", "access_token": user_token},
+            params={"fields": "id,name,picture.type(large)", "access_token": user_token},
             timeout=15.0,
         )
         profile_response.raise_for_status()
-        facebook_user_id = str(profile_response.json().get("id") or "")
+        profile = profile_response.json()
+        facebook_user_id = str(profile.get("id") or "")
         if not facebook_user_id:
             raise ValueError("missing Facebook user id")
+        facebook_name = str(profile.get("name") or "").strip()
+        picture = profile.get("picture")
+        profile_picture_url = str(picture.get("data", {}).get("url") or "") if isinstance(picture, dict) else ""
         pages_response = httpx.get(
             f"{_GRAPH_API}/me/accounts",
             params={"fields": "id,name,category,tasks,access_token", "access_token": user_token},
@@ -244,7 +248,7 @@ def oauth_callback(code: str | None = None, state: str | None = None, error: str
         # The public login flow creates its session only after the callback has
         # verified the app-scoped identity and the current Page list.
         from app.api.auth import complete_facebook_login
-        user = complete_facebook_login(db, attempt)
+        user = complete_facebook_login(db, attempt, facebook_name, profile_picture_url)
         attempt.initiated_by_user_id = user.id
         db.commit()
         from app.api.auth import facebook_onboarding_url

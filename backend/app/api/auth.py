@@ -99,7 +99,12 @@ def _set_session(response: Response, db: Session, user: User) -> None:
     response.set_cookie(SESSION_COOKIE_NAME, session.token, httponly=True, samesite="lax", max_age=7 * 24 * 60 * 60)
 
 
-def complete_facebook_login(db: Session, attempt: MetaOAuthAttempt) -> User:
+def complete_facebook_login(
+    db: Session,
+    attempt: MetaOAuthAttempt,
+    facebook_name: str = "",
+    profile_picture_url: str = "",
+) -> User:
     """Create/retrieve an identity and grant only currently verified Page access."""
     identity = db.query(FacebookIdentity).filter_by(facebook_user_id=attempt.facebook_user_id).first()
     if identity is None:
@@ -110,11 +115,21 @@ def complete_facebook_login(db: Session, attempt: MetaOAuthAttempt) -> User:
         user = User(username=username, password_hash=hash_password(token_urlsafe(32)), display_name="Facebook user", role=UserRole.cashier)
         db.add(user)
         db.flush()
-        identity = FacebookIdentity(user_id=user.id, facebook_user_id=attempt.facebook_user_id)
+        identity = FacebookIdentity(
+            user_id=user.id,
+            facebook_user_id=attempt.facebook_user_id,
+            facebook_name=facebook_name[:255],
+            profile_picture_url=profile_picture_url[:2000],
+        )
         db.add(identity)
     else:
         user = identity.user
         identity.last_verified_at = datetime.utcnow()
+
+    if facebook_name:
+        identity.facebook_name = facebook_name[:255]
+    if profile_picture_url:
+        identity.profile_picture_url = profile_picture_url[:2000]
 
     facebook_page_ids = {str(page.get("id")) for page in attempt.available_pages}
     channels = db.query(Channel).filter(Channel.type == ChannelType.facebook_page, Channel.external_id.in_(facebook_page_ids)).all() if facebook_page_ids else []

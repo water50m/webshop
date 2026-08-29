@@ -15,6 +15,8 @@ class MemberOut(BaseModel):
     user_id: int
     username: str
     display_name: str
+    facebook_name: str = ""
+    profile_picture_url: str = ""
     role: ChannelMembershipRole
     is_active: bool
 
@@ -40,10 +42,13 @@ class ChannelAuditOut(BaseModel):
 
 
 def _member_out(member: ChannelMembership) -> MemberOut:
+    identity = member.user.facebook_identity
     return MemberOut(
         user_id=member.user_id,
         username=member.user.username,
         display_name=member.user.display_name,
+        facebook_name=identity.facebook_name if identity else "",
+        profile_picture_url=identity.profile_picture_url if identity else "",
         role=member.role,
         is_active=member.is_active,
     )

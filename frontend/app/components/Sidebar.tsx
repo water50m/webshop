@@ -165,11 +165,14 @@ export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen
       <aside
         className={`shrink-0 bg-slate-900 text-slate-200 min-h-screen flex flex-col print:hidden fixed sm:static inset-y-0 left-0 z-40 transform transition-all w-64 sm:w-56 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} sm:translate-x-0 ${collapsed ? "sm:w-0 sm:overflow-hidden sm:border-r-0" : ""}`}
       >
-        <div className="flex items-center justify-between gap-2 px-4 py-5 text-white font-semibold text-lg border-b border-slate-700/60">
-          <span className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 px-4 py-4 text-white border-b border-slate-700/60">
+          <div className="min-w-0">
+            <span className="flex items-center gap-2 font-semibold text-lg">
             <Store className="w-6 h-6 text-amber-400" />
             SStore
-          </span>
+            </span>
+            {activeShop?.facebook_page_name && <div className="mt-1 truncate pl-8 text-sm font-medium text-amber-300" title={activeShop.facebook_page_name}>{activeShop.facebook_page_name}</div>}
+          </div>
           <button onClick={() => onMobileOpenChange(false)} className="min-h-11 min-w-11 -mr-2 text-slate-400 hover:text-white sm:hidden" aria-label="ปิดเมนู">
             <X className="w-5 h-5" />
           </button>
@@ -203,7 +206,6 @@ export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen
       {user && (
         <div className="border-t border-slate-700/60 px-4 py-3">
           {shops.length > 0 && <select value={activeShopId} onChange={(event) => changeShop(event.target.value)} className="mb-3 h-8 w-full rounded bg-slate-800 px-2 text-xs text-white outline-none ring-1 ring-slate-700"><option value="" disabled>เลือกร้าน</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select>}
-          {activeShop && <div className="mb-3 flex items-center gap-1.5 text-xs text-slate-400" title={activeShop.facebook_page_id ?? undefined}><MessageCircle className="h-3.5 w-3.5 text-blue-400" />{activeShop.facebook_page_name ? `เพจ: ${activeShop.facebook_page_name}` : "ยังไม่เชื่อม Facebook Page"}</div>}
           <div className="text-sm font-medium text-white truncate">{user.display_name || user.username}</div>
           <div className="text-xs text-slate-400 mb-2">{ROLE_LABEL[user.role]}</div>
 

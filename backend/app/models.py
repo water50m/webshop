@@ -136,6 +136,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(255), default="")
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.cashier)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    facebook_identity: Mapped["FacebookIdentity | None"] = relationship(back_populates="user", uselist=False)
 
 
 class Shop(Base):
@@ -208,10 +209,12 @@ class FacebookIdentity(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
     facebook_user_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    facebook_name: Mapped[str] = mapped_column(String(255), default="")
+    profile_picture_url: Mapped[str] = mapped_column(String(2000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_verified_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    user: Mapped["User"] = relationship()
+    user: Mapped["User"] = relationship(back_populates="facebook_identity")
 
 
 class ReceiptCounter(Base):

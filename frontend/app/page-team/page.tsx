@@ -11,6 +11,16 @@ const ROLE_LABEL: Record<ChannelMember["role"], string> = {
   viewer: "ดูอย่างเดียว",
 };
 
+function MemberAvatar({ member }: { member: ChannelMember }) {
+  const name = member.facebook_name || member.display_name || member.username;
+  return (
+    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">
+      {name.slice(0, 1).toUpperCase()}
+      {member.profile_picture_url && <img src={member.profile_picture_url} alt={`รูปโปรไฟล์ Facebook ของ ${name}`} className="absolute inset-0 h-full w-full object-cover" />}
+    </span>
+  );
+}
+
 export default function PageTeamPage() {
   const [channels, setChannels] = useState<FacebookConnection[]>([]);
   const [channelId, setChannelId] = useState<number | null>(null);
@@ -93,6 +103,6 @@ export default function PageTeamPage() {
     </div>
     {error && <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
     {channelId !== null && <form onSubmit={addMember} className="mt-5 rounded-xl border border-slate-200 bg-white p-4"><h2 className="font-semibold text-slate-900">เพิ่มสมาชิกเดิมในร้าน</h2><div className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="ชื่อผู้ใช้" className="h-10 flex-1 rounded-lg border border-slate-300 px-3 text-sm" /><select value={role} onChange={(event) => setRole(event.target.value as ChannelMember["role"])} className="h-10 rounded-lg border border-slate-300 px-3 text-sm"><option value="page_staff">พนักงานเพจ</option><option value="viewer">ดูอย่างเดียว</option><option value="page_manager">ผู้จัดการเพจ</option><option value="page_owner">เจ้าของเพจ</option></select><button disabled={busy} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white disabled:opacity-50"><UserPlus className="h-4 w-4" />เพิ่ม</button></div></form>}
-    <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4"><h2 className="font-semibold text-slate-900">สมาชิกเพจ</h2>{members.length ? <ul className="mt-3 divide-y divide-slate-100">{members.filter((member) => member.is_active).map((member) => <li key={member.user_id} className="flex flex-wrap items-center gap-3 py-3"><div className="min-w-36 flex-1"><p className="font-medium text-slate-800">{member.display_name || member.username}</p><p className="text-xs text-slate-500">{member.username}</p></div><select value={member.role} onChange={(event) => void changeRole(member, event.target.value as ChannelMember["role"])} disabled={busy || member.role === "page_owner"} className="h-9 rounded-lg border border-slate-300 px-2 text-xs disabled:opacity-60">{Object.entries(ROLE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button onClick={() => void removeMember(member)} disabled={busy || member.role === "page_owner"} className="inline-flex h-9 items-center gap-1 rounded-lg border border-rose-200 px-3 text-xs text-rose-700 disabled:opacity-50"><UserMinus className="h-3.5 w-3.5" />ถอน</button></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">ยังไม่มีสมาชิก</p>}</section>
+    <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4"><h2 className="font-semibold text-slate-900">สมาชิกเพจ</h2>{members.length ? <ul className="mt-3 divide-y divide-slate-100">{members.filter((member) => member.is_active).map((member) => <li key={member.user_id} className="flex flex-wrap items-center gap-3 py-3"><MemberAvatar member={member} /><div className="min-w-36 flex-1"><p className="font-medium text-slate-800">{member.facebook_name || member.display_name || member.username}</p><p className="text-xs text-slate-500">{member.facebook_name ? member.display_name || member.username : member.username}</p></div><select value={member.role} onChange={(event) => void changeRole(member, event.target.value as ChannelMember["role"])} disabled={busy || member.role === "page_owner"} className="h-9 rounded-lg border border-slate-300 px-2 text-xs disabled:opacity-60">{Object.entries(ROLE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button onClick={() => void removeMember(member)} disabled={busy || member.role === "page_owner"} className="inline-flex h-9 items-center gap-1 rounded-lg border border-rose-200 px-3 text-xs text-rose-700 disabled:opacity-50"><UserMinus className="h-3.5 w-3.5" />ถอน</button></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">ยังไม่มีสมาชิก</p>}</section>
   </main>;
 }

@@ -137,6 +137,11 @@ def on_startup():
             connection.execute(text("ALTER TABLE meta_oauth_attempts ADD COLUMN shop_id INTEGER"))
         if "facebook_user_id" not in attempt_columns:
             connection.execute(text("ALTER TABLE meta_oauth_attempts ADD COLUMN facebook_user_id VARCHAR(255) NOT NULL DEFAULT ''"))
+        identity_columns = {column["name"] for column in inspect(engine).get_columns("facebook_identities")}
+        if "facebook_name" not in identity_columns:
+            connection.execute(text("ALTER TABLE facebook_identities ADD COLUMN facebook_name VARCHAR(255) NOT NULL DEFAULT ''"))
+        if "profile_picture_url" not in identity_columns:
+            connection.execute(text("ALTER TABLE facebook_identities ADD COLUMN profile_picture_url VARCHAR(2000) NOT NULL DEFAULT ''"))
         if "purpose" not in attempt_columns:
             connection.execute(text("ALTER TABLE meta_oauth_attempts ADD COLUMN purpose VARCHAR(40) NOT NULL DEFAULT 'connection'"))
         if "code_verifier" not in attempt_columns:
