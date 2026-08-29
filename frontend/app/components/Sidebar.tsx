@@ -20,11 +20,11 @@ import {
   ShieldAlert,
   UserCircle,
   Truck,
-  Menu,
   X,
   Beaker,
   ClipboardCheck,
   BrainCircuit,
+  MessageCircle,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -32,7 +32,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { api, ApiError, UserRole } from "@/lib/api";
+import { api, ApiError, Shop, UserRole } from "@/lib/api";
 
 const COLLAPSE_STORAGE_KEY = "sidebar-collapsed";
 
@@ -57,6 +57,8 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof Store; roles?: User
   { href: "/settings", label: "ตั้งค่า", icon: Settings, roles: ["owner", "manager"] },
   { href: "/print-bridge", label: "Print Bridge", icon: Radio, roles: ["owner", "manager"] },
   { href: "/users", label: "ผู้ใช้งาน", icon: Users, roles: ["owner"] },
+  { href: "/facebook", label: "เชื่อม Facebook Page", icon: MessageCircle, roles: ["owner"] },
+  { href: "/page-team", label: "ทีมและสิทธิ์เพจ", icon: ShieldAlert },
 ];
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -65,7 +67,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   cashier: "แคชเชียร์",
 };
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen: boolean; onMobileOpenChange: (open: boolean) => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout, lock, refresh } = useAuth();
@@ -73,8 +75,9 @@ export default function Sidebar() {
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [savingPin, setSavingPin] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [activeShopId, setActiveShopId] = useState<string>("");
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -82,6 +85,24 @@ export default function Sidebar() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    void api.listShops().then((items) => {
+      setShops(items);
+      const saved = window.localStorage.getItem("active-shop-id");
+      const selected = items.find((item) => String(item.id) === saved) ?? items[0];
+      if (selected) {
+        setActiveShopId(String(selected.id));
+        window.localStorage.setItem("active-shop-id", String(selected.id));
+      }
+    }).catch(() => undefined);
+  }, []);
+
+  function changeShop(id: string) {
+    setActiveShopId(id);
+    window.localStorage.setItem("active-shop-id", id);
+    window.location.reload();
+  }
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -120,25 +141,18 @@ export default function Sidebar() {
   }
 
   const visibleItems = NAV_ITEMS.filter((item) => !item.roles || (user && item.roles.includes(user.role)));
+  const activeShop = shops.find((shop) => String(shop.id) === activeShopId);
 
   return (
     <>
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-3 left-3 z-40 flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-slate-900 text-white shadow-md print:hidden"
-        aria-label="เปิดเมนู"
-        aria-expanded={mobileOpen}
-      >
-        <Menu className="w-5 h-5" />
-      </button>
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-black/40 z-40 print:hidden"
-          onClick={() => setMobileOpen(false)}
+          className="sm:hidden fixed inset-0 z-40 bg-black/40 print:hidden"
+          onClick={() => onMobileOpenChange(false)}
         />
       )}
       {collapsed && (
-        <div className="hidden md:flex fixed inset-y-0 left-0 w-3 z-50 items-center group print:hidden">
+        <div className="hidden sm:flex fixed inset-y-0 left-0 w-3 z-50 items-center group print:hidden">
           <button
             onClick={toggleCollapsed}
             title="แสดงเมนู"
@@ -149,23 +163,23 @@ export default function Sidebar() {
         </div>
       )}
       <aside
-        className={`w-64 ${collapsed ? "md:w-0 md:overflow-hidden md:border-r-0" : "md:w-56"} shrink-0 bg-slate-900 text-slate-200 min-h-screen flex flex-col print:hidden fixed md:static inset-y-0 left-0 z-50 transform transition-all md:translate-x-0 ${
+        className={`w-64 ${collapsed ? "sm:w-0 sm:overflow-hidden sm:border-r-0" : "sm:w-56"} shrink-0 bg-slate-900 text-slate-200 min-h-screen flex flex-col print:hidden fixed sm:static inset-y-0 left-0 z-40 transform transition-all sm:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between gap-2 px-4 py-5 text-white font-semibold text-lg border-b border-slate-700/60">
           <span className="flex items-center gap-2">
             <Store className="w-6 h-6 text-amber-400" />
-            shop-sys
+            SStore
           </span>
-          <button onClick={() => setMobileOpen(false)} className="md:hidden min-h-11 min-w-11 -mr-2 text-slate-400 hover:text-white" aria-label="ปิดเมนู">
+          <button onClick={() => onMobileOpenChange(false)} className="sm:hidden min-h-11 min-w-11 -mr-2 text-slate-400 hover:text-white" aria-label="ปิดเมนู">
             <X className="w-5 h-5" />
           </button>
         </div>
         <button
           onClick={toggleCollapsed}
           title="ซ่อนเมนู"
-          className="hidden md:flex items-center justify-center gap-2 py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-b border-slate-700/60"
+          className="hidden sm:flex items-center justify-center gap-2 py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-b border-slate-700/60"
         >
           <ChevronLeft className="w-4 h-4" />
           ซ่อนเมนู
@@ -177,7 +191,7 @@ export default function Sidebar() {
               <Link
                 key={href}
                 href={href}
-                onClick={() => setMobileOpen(false)}
+                onClick={() => onMobileOpenChange(false)}
                 className={`flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors ${
                   active ? "bg-amber-500 text-white font-medium" : "text-slate-300 hover:bg-slate-800 hover:text-white"
                 }`}
@@ -190,6 +204,8 @@ export default function Sidebar() {
         </nav>
       {user && (
         <div className="border-t border-slate-700/60 px-4 py-3">
+          {shops.length > 0 && <select value={activeShopId} onChange={(event) => changeShop(event.target.value)} className="mb-3 h-8 w-full rounded bg-slate-800 px-2 text-xs text-white outline-none ring-1 ring-slate-700"><option value="" disabled>เลือกร้าน</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select>}
+          {activeShop && <div className="mb-3 flex items-center gap-1.5 text-xs text-slate-400" title={activeShop.facebook_page_id ?? undefined}><MessageCircle className="h-3.5 w-3.5 text-blue-400" />{activeShop.facebook_page_name ? `เพจ: ${activeShop.facebook_page_name}` : "ยังไม่เชื่อม Facebook Page"}</div>}
           <div className="text-sm font-medium text-white truncate">{user.display_name || user.username}</div>
           <div className="text-xs text-slate-400 mb-2">{ROLE_LABEL[user.role]}</div>
 

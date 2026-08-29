@@ -25,10 +25,10 @@ export default function Home() {
   }, [canSeeOverview]);
 
   return (
-    <main className="p-4 md:p-6 lg:p-8">
+    <main className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-center gap-2 mb-1">
         <Store className="w-6 h-6 text-amber-500" />
-        <h1 className="text-2xl font-semibold text-slate-800">shop-sys back-office</h1>
+        <h1 className="text-2xl font-semibold text-slate-800">SStore</h1>
       </div>
       <p className="text-slate-500 mb-6">
         สวัสดี {user?.display_name || user?.username} เลือกเมนูจากแถบด้านซ้าย หรือเริ่มขายได้ที่นี่
