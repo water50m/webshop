@@ -1,4 +1,4 @@
-# shop-sys — Phase 1: รับ Order จาก Meta (Messenger + Instagram DM)
+# SStore — Phase 1: รับ Order จาก Meta (Messenger + Instagram DM)
 
 ระบบรับข้อความจาก Facebook Page Messenger และ Instagram DM เข้ามาเป็น "draft order"
 ให้พนักงานตรวจสอบและกดยืนยันในหน้า back-office (Next.js) — ดูรายละเอียด design เต็มได้ที่
@@ -7,6 +7,21 @@
 ## โครงสร้างโปรเจกต์
 - `backend/` — FastAPI: รับ webhook จาก Meta, เก็บข้อความ, จับคู่สินค้า, สร้าง draft order, expose REST API
 - `frontend/` — Next.js: หน้า inbox ดูข้อความ และหน้าตรวจ/ยืนยัน draft order
+
+## การใช้งาน Back-office
+
+- หน้าจอที่กว้างตั้งแต่ 640px ขึ้นไปจะแสดง sidebar แบบ desktop และสามารถยุบ/ขยายได้จากปุ่มในแถบเมนู
+- บนมือถือ เมนูจะเปิดเป็น drawer จากปุ่มด้านบน และจะปิดเองเมื่อเลือกเมนูหรือแตะพื้นที่ด้านนอก
+- หน้าเริ่มต้นอยู่ที่ `/` และปุ่ม **เริ่มขาย (POS)** จะพาไปที่ `/pos`
+
+การพัฒนา frontend เปิดใช้งานได้ทั้งเครื่องเดียวกันและอุปกรณ์ใน private LAN โดย Next.js จะ bind ที่ `0.0.0.0:3000` อัตโนมัติ:
+
+```bash
+cd frontend
+npm run dev
+```
+
+เปิดจากอุปกรณ์อื่นด้วย `http://<computer-ip>:3000` โดยไม่ต้องแก้ source code หรือกำหนด IP ตายตัว
 
 ## 1) ติดตั้งและรัน Backend
 
@@ -19,7 +34,7 @@ copy .env.example .env           # แล้วแก้ค่าใน .env
 ```
 
 ตั้งค่า `.env`:
-- `DATABASE_URL` — connection string ของ PostgreSQL ที่ต้องสร้างไว้ล่วงหน้า (เช่น `createdb shop_sys`)
+- `DATABASE_URL` — connection string ของ PostgreSQL ที่ต้องสร้างไว้ล่วงหน้า (เช่น `createdb sstore`)
   - ทดสอบโดยไม่มี Postgres ได้ด้วย sqlite: `DATABASE_URL=sqlite:///./dev.db`
 - `META_VERIFY_TOKEN` — ตั้งเป็น string สุ่มเอง (ใช้ตอน verify webhook กับ Meta)
 - `META_APP_SECRET` — จาก Meta App settings (ใช้ตรวจ signature ของ webhook; ถ้าเว้นว่างจะข้ามการตรวจสอบ ใช้ได้เฉพาะตอน dev เท่านั้น)
