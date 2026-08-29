@@ -17,17 +17,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const isPublicLegalPage = ["/privacy", "/terms", "/data-deletion"].includes(pathname);
   const isInboxPage = pathname === "/inbox";
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [desktopNavigation, setDesktopNavigation] = useState(false);
-
-  useEffect(() => {
-    // A desktop browser can report a narrow CSS viewport when it is zoomed in.
-    // Fine pointer + hover keeps its persistent sidebar in that situation.
-    const mediaQuery = window.matchMedia("(min-width: 40rem), (hover: hover) and (pointer: fine)");
-    const updateNavigationMode = () => setDesktopNavigation(mediaQuery.matches);
-    updateNavigationMode();
-    mediaQuery.addEventListener("change", updateNavigationMode);
-    return () => mediaQuery.removeEventListener("change", updateNavigationMode);
-  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -55,14 +44,14 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className={`flex min-h-screen w-full ${desktopNavigation ? "flex-row" : "flex-col"}`}>
-      {!isInboxPage && !desktopNavigation && <header className="mobile-app-bar">
+    <div className="flex min-h-screen w-full flex-col sm:flex-row">
+      {!isInboxPage && <header className="mobile-app-bar sm:hidden">
         <button onClick={() => setMobileNavOpen(true)} className="mobile-app-bar__menu" aria-label="เปิดเมนู" aria-expanded={mobileNavOpen}>
           <Menu className="h-5 w-5" />
         </button>
         <span className="text-sm font-semibold text-slate-800">SStore</span>
       </header>}
-      <Sidebar desktopNavigation={desktopNavigation} mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
+      <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
       <MobileNavContext.Provider value={setMobileNavOpen}>
         <div className="mobile-content min-h-0 min-w-0 flex-1">{children}</div>
       </MobileNavContext.Provider>

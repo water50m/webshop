@@ -67,7 +67,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   cashier: "แคชเชียร์",
 };
 
-export default function Sidebar({ desktopNavigation, mobileOpen, onMobileOpenChange }: { desktopNavigation: boolean; mobileOpen: boolean; onMobileOpenChange: (open: boolean) => void }) {
+export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen: boolean; onMobileOpenChange: (open: boolean) => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout, lock, refresh } = useAuth();
@@ -145,13 +145,13 @@ export default function Sidebar({ desktopNavigation, mobileOpen, onMobileOpenCha
 
   return (
     <>
-      {!desktopNavigation && mobileOpen && (
+      {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 print:hidden"
           onClick={() => onMobileOpenChange(false)}
         />
       )}
-      {desktopNavigation && collapsed && (
+      {collapsed && (
         <div className="flex fixed inset-y-0 left-0 w-3 z-50 items-center group print:hidden">
           <button
             onClick={toggleCollapsed}
@@ -163,27 +163,21 @@ export default function Sidebar({ desktopNavigation, mobileOpen, onMobileOpenCha
         </div>
       )}
       <aside
-        className={`shrink-0 bg-slate-900 text-slate-200 min-h-screen flex flex-col print:hidden inset-y-0 left-0 z-40 transform transition-all ${
-          desktopNavigation
-            ? collapsed
-              ? "static w-0 overflow-hidden border-r-0 translate-x-0"
-              : "static w-56 translate-x-0"
-            : `fixed w-64 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`
-        }`}
+        className={`shrink-0 bg-slate-900 text-slate-200 min-h-screen flex flex-col print:hidden fixed sm:static inset-y-0 left-0 z-40 transform transition-all w-64 sm:w-56 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} sm:translate-x-0 ${collapsed ? "sm:w-0 sm:overflow-hidden sm:border-r-0" : ""}`}
       >
         <div className="flex items-center justify-between gap-2 px-4 py-5 text-white font-semibold text-lg border-b border-slate-700/60">
           <span className="flex items-center gap-2">
             <Store className="w-6 h-6 text-amber-400" />
             SStore
           </span>
-          {!desktopNavigation && <button onClick={() => onMobileOpenChange(false)} className="min-h-11 min-w-11 -mr-2 text-slate-400 hover:text-white" aria-label="ปิดเมนู">
+          <button onClick={() => onMobileOpenChange(false)} className="min-h-11 min-w-11 -mr-2 text-slate-400 hover:text-white sm:hidden" aria-label="ปิดเมนู">
             <X className="w-5 h-5" />
-          </button>}
+          </button>
         </div>
         <button
           onClick={toggleCollapsed}
           title="ซ่อนเมนู"
-          className={`${desktopNavigation ? "flex" : "hidden"} items-center justify-center gap-2 py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-b border-slate-700/60`}
+          className="hidden sm:flex items-center justify-center gap-2 py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-b border-slate-700/60"
         >
           <ChevronLeft className="w-4 h-4" />
           ซ่อนเมนู
