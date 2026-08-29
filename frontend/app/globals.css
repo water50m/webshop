@@ -58,6 +58,13 @@ body {
   box-shadow: 0 1px 3px rgb(15 23 42 / 0.05);
 }
 
+/* Keep the mobile header out of desktop flex layouts even if utility CSS is stale. */
+@media (min-width: 640px) {
+  .mobile-app-bar {
+    display: none !important;
+  }
+}
+
 .mobile-app-bar__menu {
   display: inline-flex;
   width: 2.75rem;
