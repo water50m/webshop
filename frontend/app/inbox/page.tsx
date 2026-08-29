@@ -61,7 +61,9 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [channelId, setChannelId] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const [sseUnavailable, setSseUnavailable] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [timeMessageId, setTimeMessageId] = useState<number | null>(null);
   const [showConversationOnMobile, setShowConversationOnMobile] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [statusFilter, setStatusFilter] = useState<ConversationStatus | "">("");
@@ -103,6 +105,10 @@ export default function InboxPage() {
 
   function formatThaiOrderTime(timestamp: string) {
     return new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" }).format(new Date(timestamp)) + " น.";
+  }
+
+  function formatMessageTime(timestamp: string) {
+    return new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" }).format(new Date(timestamp));
   }
 
   const loadConversations = useCallback(async () => {
@@ -163,6 +169,8 @@ export default function InboxPage() {
   // retaining the database as the source of truth after a page reload.
   useEffect(() => {
     const source = new EventSource(api.inboxEventsUrl(), { withCredentials: true });
+    source.onopen = () => setSseUnavailable(false);
+    source.onerror = () => setSseUnavailable(true);
     const receiveMessage = (event: MessageEvent<string>) => {
       let incoming: InboxMessageEvent;
       try {
@@ -215,6 +223,20 @@ export default function InboxPage() {
       source.close();
     };
   }, [channelId, statusFilter, visibility]);
+
+  // Poll only while the browser is reconnecting its SSE stream. Normal Inbox
+  // traffic uses the persistent event stream and makes no repeat API requests.
+  useEffect(() => {
+    if (!sseUnavailable) return;
+    const refreshFromDatabase = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadConversations();
+      const activeConversationId = selectedIdRef.current;
+      if (activeConversationId !== null) void loadConversationContent(activeConversationId);
+    };
+    const interval = window.setInterval(refreshFromDatabase, 30_000);
+    return () => window.clearInterval(interval);
+  }, [loadConversationContent, loadConversations, sseUnavailable]);
 
   async function refreshInbox() {
     setRefreshing(true);
@@ -791,16 +813,22 @@ export default function InboxPage() {
           <div className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-y-auto p-4">
             {[...messages].reverse().map((message) => {
               const showDraftReview = pendingDraft !== null && message.id === pendingDraftAcknowledgementId;
+              const isOutgoing = message.direction === "out";
+              const showTime = timeMessageId === message.id;
               return (
-                <div key={message.id} className={`flex w-full ${message.direction === "out" ? "justify-end" : "justify-start"}`}>
+                <div key={message.id} className={`flex w-full ${isOutgoing ? "justify-end" : "justify-start"}`}>
                   <div className="w-fit max-w-[85%] md:max-w-md">
-                    <div className={`w-full rounded-lg p-3 ${message.direction === "in" ? "bg-gray-100" : "bg-amber-100"}`}>
+                    <button
+                      type="button"
+                      onClick={() => setTimeMessageId((current) => current === message.id ? null : message.id)}
+                      className={`w-full rounded-lg p-3 text-left ${message.direction === "in" ? "bg-gray-100" : "bg-amber-100"}`}
+                      title="กดเพื่อดูเวลา"
+                      aria-expanded={showTime}
+                    >
+                      {isOutgoing && <div className="mb-1 text-[11px] font-medium text-amber-800">{message.sent_by_display_name ? `ตอบโดย ${message.sent_by_display_name}` : "ตอบกลับอัตโนมัติ"}</div>}
                       <div>{message.text}</div>
-                      <div className="mt-1 text-xs text-gray-400">
-                        {message.sent_by_display_name ? `ส่งโดย ${message.sent_by_display_name} · ` : ""}
-                        {new Date(message.created_at).toLocaleString()}
-                      </div>
-                    </div>
+                      {showTime && <div className="mt-1 text-xs text-gray-400">{formatMessageTime(message.created_at)}</div>}
+                    </button>
                     {showDraftReview && pendingDraft && (
                       <div className="mt-2 w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950 shadow-sm">
                         <div className="font-semibold">รวม {pendingDraft.total.toFixed(2)} บาท</div>

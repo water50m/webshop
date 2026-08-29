@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Public web origin used by the Data Deletion Callback response URL.
     meta_public_web_url: str = ""
     meta_token_encryption_key: str = ""
+    # Optional in development; production uses this to distribute Inbox events
+    # to every backend instance serving an SSE connection.
+    redis_url: str = ""
 
     # Dedicated read-only credential for the separate history-analysis module.
     # It is deliberately never used by the Messenger sending service.
