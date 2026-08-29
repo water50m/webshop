@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowLeft, Camera, CircleUserRound, Eye, EyeOff, ImageOff, Inbox as InboxIcon, MapPin, Menu, Pin, PinOff, RefreshCw, Search, Send, Tag, X } from "lucide-react";
+import { ArrowLeft, Camera, ChevronDown, ChevronUp, CircleUserRound, Eye, EyeOff, ImageOff, Inbox as InboxIcon, MapPin, Menu, Pin, PinOff, RefreshCw, Search, Send, Tag, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, Conversation, ConversationStatus, DraftOrder, FacebookConnection, InboxMessageEvent, Message, Product, resolveImageUrl } from "@/lib/api";
+import { api, Conversation, ConversationStatus, DraftOrder, InboxMessageEvent, Message, Product, resolveImageUrl } from "@/lib/api";
 import { useMobileNav } from "@/app/components/MobileNavContext";
 
 type VisibilityFilter = "active" | "hidden" | "all";
@@ -59,8 +59,8 @@ function CustomerAvatar({ conversation, className = "" }: { conversation: Conver
 export default function InboxPage() {
   const setMobileNavOpen = useMobileNav();
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [channels, setChannels] = useState<FacebookConnection[]>([]);
   const [channelId, setChannelId] = useState<number | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showConversationOnMobile, setShowConversationOnMobile] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -122,7 +122,6 @@ export default function InboxPage() {
 
   useEffect(() => {
     void api.listFacebookConnections().then((items) => {
-      setChannels(items);
       setChannelId((current) => current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null);
     }).catch((err) => setError(String(err)));
   }, []);
@@ -565,31 +564,33 @@ export default function InboxPage() {
   return (
     <main className="flex h-[100dvh] max-h-[100dvh] min-h-0 overflow-hidden text-sm bg-white">
       <aside className={`${showConversationOnMobile ? "hidden" : "flex"} w-full md:flex md:w-80 shrink-0 flex-col border-r overflow-y-auto`}>
-        <div className="border-b p-4 space-y-3">
+        <div className="border-b p-4">
           <h1 className="flex items-center gap-2 text-base font-semibold">
             <button onClick={() => setMobileNavOpen(true)} className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white shadow-sm md:hidden" aria-label="เปิดเมนู"><Menu className="h-5 w-5" /></button>
             <InboxIcon className="w-4 h-4 text-amber-500" />
             Inbox
             <button
+              type="button"
+              onClick={() => setFiltersOpen((open) => !open)}
+              title={filtersOpen ? "ซ่อนตัวกรอง Inbox" : "แสดงตัวกรอง Inbox"}
+              aria-label={filtersOpen ? "ซ่อนตัวกรอง Inbox" : "แสดงตัวกรอง Inbox"}
+              aria-expanded={filtersOpen}
+              className="ml-auto rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            >
+              {filtersOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            <button
               onClick={() => void refreshInbox()}
               disabled={refreshing}
               title="ดึงข้อความล่าสุดจากระบบ"
               aria-label="ดึงข้อความล่าสุดจากระบบ"
-              className="ml-auto rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed"
+              className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             </button>
           </h1>
-          <select
-            aria-label="เลือก Facebook Page"
-            value={channelId ?? ""}
-            onChange={(event) => setChannelId(event.target.value ? Number(event.target.value) : null)}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400"
-            disabled={!channels.length}
-          >
-            {channels.length === 0 ? <option value="">ยังไม่มีเพจที่เข้าถึงได้</option> : channels.map((channel) => <option key={channel.id} value={channel.id}>{channel.name || `Facebook Page ${channel.page_id}`}</option>)}
-          </select>
-          <label className="relative block">
+          {filtersOpen && <div className="mt-3 space-y-3">
+            <label className="relative block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               value={search}
@@ -597,8 +598,8 @@ export default function InboxPage() {
               placeholder="ค้นหาชื่อลูกค้า"
               className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
             />
-          </label>
-          <div className="grid grid-cols-2 gap-2">
+            </label>
+            <div className="grid grid-cols-2 gap-2">
             <select
               aria-label="กรองตามสถานะ"
               value={statusFilter}
@@ -618,7 +619,8 @@ export default function InboxPage() {
               <option value="hidden">แชทที่ซ่อน</option>
               <option value="all">ทั้งหมด</option>
             </select>
-          </div>
+            </div>
+          </div>}
         </div>
 
         {error && <p className="p-4 text-red-600">{error}</p>}
@@ -694,12 +696,14 @@ export default function InboxPage() {
                     className="min-w-0 flex-1 px-4 py-1.5 text-left"
                   >
                     <div className={`flex min-w-0 items-center gap-3 ${conversation.unread_count > 0 ? "font-semibold" : "font-medium"}`}>
-                      <CustomerAvatar conversation={conversation} className="h-11 w-11" />
+                      <span className="relative z-0 h-11 w-11 shrink-0">
+                        <CustomerAvatar conversation={conversation} className="h-11 w-11" />
+                        {conversation.unread_count > 0 && <span title={`ข้อความลูกค้าใหม่ ${conversation.unread_count} ข้อความ`} aria-label={`ข้อความลูกค้าใหม่ ${conversation.unread_count} ข้อความ`} className="absolute -right-0.5 -top-0.5 z-10 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white" />}
+                      </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate">{conversation.customer_display_name || `ลูกค้า #${conversation.customer_id}`}</span>
                           {conversation.delivery_note && <span className="inline-flex min-w-0 flex-1 items-center gap-1 text-xs font-normal text-slate-500"><MapPin className="h-3.5 w-3.5 shrink-0 text-sky-600" /><span className="truncate">{conversation.delivery_note}</span></span>}
-                          {conversation.unread_count > 0 && <span title={`ข้อความลูกค้าใหม่ ${conversation.unread_count} ข้อความ`} aria-label={`ข้อความลูกค้าใหม่ ${conversation.unread_count} ข้อความ`} className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500" />}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           {conversation.primary_label && <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${primaryLabelStyle(conversation.primary_label)} ${primaryLabelAnimation(conversation.primary_label)}`}>{conversation.primary_label}</span>}
