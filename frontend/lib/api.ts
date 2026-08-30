@@ -772,6 +772,7 @@ export const api = {
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   me: () => request<AuthUser>("/api/auth/me"),
   startFacebookAccountPages: () => request<{ authorization_url: string }>("/api/auth/facebook/pages/start", { method: "POST" }),
+  listFacebookAccountPages: () => request<FacebookOnboardingPage[]>("/api/auth/facebook/pages"),
   getFacebookAccountPages: (attemptId: string) => request<FacebookOnboardingPending>(`/api/auth/facebook/pages/pending/${attemptId}`),
   registerFacebookAccountPage: (attemptId: string, pageId: string) =>
     request<FacebookOnboardingPage>(`/api/auth/facebook/pages/pending/${attemptId}/register`, { method: "POST", body: JSON.stringify({ page_id: pageId }) }),

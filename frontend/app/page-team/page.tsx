@@ -94,7 +94,7 @@ export default function PageTeamPage() {
     finally { setBusy(false); }
   }
 
-  return <main className="mx-auto max-w-3xl p-4 md:p-6">
+  return <main className="w-full p-4 md:p-6">
     <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">
       <div className="flex gap-3"><span className="rounded-xl bg-indigo-600 p-2.5 text-white"><ShieldCheck className="h-6 w-6" /></span><div><h1 className="text-xl font-semibold text-slate-900">ทีมและสิทธิ์เพจ</h1><p className="mt-1 text-sm text-slate-600">กำหนดว่าผู้ใช้งานคนใดเห็นหรือตอบ Inbox ของแต่ละ Facebook Page ได้</p></div></div>
       {channels.length ? <select value={channelId ?? ""} onChange={(event) => setChannelId(event.target.value ? Number(event.target.value) : null)} className="mt-5 h-10 w-full rounded-lg border border-indigo-200 bg-white px-3 text-sm">

@@ -314,6 +314,40 @@ def facebook_account_pages_pending(attempt_id: str, db: Session = Depends(get_db
     return facebook_pending_pages(db, attempt)
 
 
+@router.get("/facebook/pages", response_model=list[FacebookPageOut])
+def list_facebook_account_pages(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """List the registered Pages this Facebook-login user may actively use.
+
+    Page access is determined by ChannelMembership, rather than by the current
+    shop selection, so a user who manages multiple Pages can switch between
+    them from the account Pages screen.
+    """
+    if user.facebook_identity is None:
+        raise HTTPException(status_code=403, detail="หน้านี้ใช้ได้เฉพาะบัญชีที่ล็อกอินด้วย Facebook")
+    channels = (
+        db.query(Channel)
+        .join(ChannelMembership, ChannelMembership.channel_id == Channel.id)
+        .filter(
+            ChannelMembership.user_id == user.id,
+            ChannelMembership.is_active.is_(True),
+            Channel.type == ChannelType.facebook_page,
+            Channel.shop_id.is_not(None),
+        )
+        .order_by(Channel.name, Channel.id)
+        .all()
+    )
+    return [
+        FacebookPageOut(
+            id=channel.external_id,
+            name=channel.name or "Facebook Page",
+            registered=True,
+            channel_id=channel.id,
+            shop_id=channel.shop_id,
+        )
+        for channel in channels
+    ]
+
+
 def facebook_pending_pages(db: Session, attempt: MetaOAuthAttempt) -> FacebookPendingOut:
     pages = []
     for page in attempt.available_pages:

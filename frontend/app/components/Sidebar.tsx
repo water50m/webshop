@@ -56,7 +56,6 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof Store; roles?: User
   { href: "/parser-v2", label: "ทดลอง Parser v2", icon: BrainCircuit, roles: ["owner", "manager"] },
   { href: "/settings", label: "ตั้งค่า", icon: Settings, roles: ["owner", "manager"] },
   { href: "/users", label: "ผู้ใช้งาน", icon: Users, roles: ["owner"] },
-  { href: "/facebook", label: "เชื่อม Facebook Page", icon: MessageCircle, roles: ["owner"] },
   { href: "/my-pages", label: "เพจ Facebook ของฉัน", icon: MessageCircle, facebookOnly: true },
   { href: "/page-team", label: "ทีมและสิทธิ์เพจ", icon: ShieldAlert },
 ];
