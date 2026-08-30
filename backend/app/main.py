@@ -141,10 +141,13 @@ def on_startup():
             "loyalty_customers", "shifts", "sales", "promotions", "expenses",
             "shop_settings", "print_bridges", "order_options", "stocktake_sessions",
         ):
-            columns = {column["name"] for column in inspect(engine).get_columns(table_name)}
+            # Reuse this transaction's connection.  Inspecting through the
+            # Engine would check out a second connection which can block on
+            # an ALTER TABLE lock held by this startup transaction.
+            columns = {column["name"] for column in inspect(connection).get_columns(table_name)}
             if "shop_id" not in columns:
                 connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN shop_id INTEGER"))
-        attempt_columns = {column["name"] for column in inspect(engine).get_columns("meta_oauth_attempts")}
+        attempt_columns = {column["name"] for column in inspect(connection).get_columns("meta_oauth_attempts")}
         if "shop_id" not in attempt_columns:
             connection.execute(text("ALTER TABLE meta_oauth_attempts ADD COLUMN shop_id INTEGER"))
         if "facebook_user_id" not in attempt_columns:
@@ -165,7 +168,7 @@ def on_startup():
         # Facebook-first attempts begin before an SStore user exists. PostgreSQL
         # installations created by an earlier release need this nullable change;
         # fresh databases receive it from the SQLAlchemy model.
-        initiated_column = next((column for column in inspect(engine).get_columns("meta_oauth_attempts") if column["name"] == "initiated_by_user_id"), None)
+        initiated_column = next((column for column in inspect(connection).get_columns("meta_oauth_attempts") if column["name"] == "initiated_by_user_id"), None)
         if initiated_column and not initiated_column["nullable"] and engine.dialect.name == "postgresql":
             connection.execute(text("ALTER TABLE meta_oauth_attempts ALTER COLUMN initiated_by_user_id DROP NOT NULL"))
     db = SessionLocal()
