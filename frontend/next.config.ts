@@ -3,7 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Capacitor builds a static copy into `out`; the normal web deployment
   // remains a Next server with its existing rewrite proxy.
-  ...(process.env.CAPACITOR_BUILD === "1" ? { output: "export" as const } : {}),
+  ...(process.env.CAPACITOR_BUILD === "1"
+    ? { output: "export" as const, distDir: ".next-android" }
+    : {}),
   // Let devices on private LANs load dev-only assets and the HMR WebSocket.
   // These are host patterns, so moving the computer to another private network
   // does not require editing this file.
