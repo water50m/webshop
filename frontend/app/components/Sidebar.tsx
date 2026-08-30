@@ -25,7 +25,6 @@ import {
   ClipboardCheck,
   BrainCircuit,
   MessageCircle,
-  Facebook,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -40,6 +39,7 @@ const COLLAPSE_STORAGE_KEY = "sidebar-collapsed";
 const NAV_ITEMS: { href: string; label: string; icon: typeof Store; roles?: UserRole[]; facebookOnly?: boolean }[] = [
   { href: "/", label: "หน้าหลัก", icon: Home },
   { href: "/pos", label: "หน้าขาย (POS)", icon: LayoutDashboard },
+  { href: "/receipts", label: "สร้าง/พิมพ์ใบเสร็จ", icon: Receipt },
   { href: "/sales/history", label: "ประวัติบิล", icon: History },
   { href: "/products", label: "สินค้า/สต๊อก", icon: Package },
   { href: "/ingredients", label: "วัตถุดิบ", icon: Beaker, roles: ["owner", "manager"] },
@@ -59,7 +59,7 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof Store; roles?: User
   { href: "/print-bridge", label: "Print Bridge", icon: Radio, roles: ["owner", "manager"] },
   { href: "/users", label: "ผู้ใช้งาน", icon: Users, roles: ["owner"] },
   { href: "/facebook", label: "เชื่อม Facebook Page", icon: MessageCircle, roles: ["owner"] },
-  { href: "/my-pages", label: "เพจ Facebook ของฉัน", icon: Facebook, facebookOnly: true },
+  { href: "/my-pages", label: "เพจ Facebook ของฉัน", icon: MessageCircle, facebookOnly: true },
   { href: "/page-team", label: "ทีมและสิทธิ์เพจ", icon: ShieldAlert },
 ];
 

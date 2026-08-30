@@ -20,7 +20,7 @@ const Receipt = forwardRef<HTMLDivElement, { sale: Sale }>(function Receipt({ sa
   }, []);
 
   return (
-    <div ref={ref} className="bg-white rounded p-6 w-80 print:w-full print:shadow-none">
+    <div ref={ref} className="receipt-document bg-white rounded p-6 w-80 print:w-full print:shadow-none">
       {shop?.shop_name && (
         <div className="text-center mb-2">
           <div className="font-semibold">{shop.shop_name}</div>
@@ -28,13 +28,16 @@ const Receipt = forwardRef<HTMLDivElement, { sale: Sale }>(function Receipt({ sa
           {shop.tax_id && <div className="text-xs text-gray-500">เลขประจำตัวผู้เสียภาษี: {shop.tax_id}</div>}
         </div>
       )}
-      <h2 className="text-center font-semibold mb-2">ใบเสร็จ</h2>
-      <p className="text-center text-xs text-gray-500 mb-3">
-        เลขที่ {sale.receipt_no ?? sale.id} &middot;{" "}
-        {sale.completed_at ? new Date(sale.completed_at).toLocaleString() : new Date().toLocaleString()}
-        {sale.created_by_name ? ` · ${sale.created_by_name}` : ""}
-      </p>
+      <h2 className="text-center font-semibold mb-2">ใบเสร็จรับเงิน</h2>
+      <div className="border-y border-dashed py-1.5 mb-3 text-xs text-gray-600 space-y-0.5">
+        <div className="flex justify-between"><span>เลขที่ใบเสร็จ</span><span>{sale.receipt_no ?? sale.id}</span></div>
+        <div className="flex justify-between"><span>วันเวลา</span><span>{sale.completed_at ? new Date(sale.completed_at).toLocaleString("th-TH") : new Date().toLocaleString("th-TH")}</span></div>
+        {sale.created_by_name && <div className="flex justify-between"><span>ผู้รับเงิน</span><span>{sale.created_by_name}</span></div>}
+      </div>
       <table className="w-full text-sm mb-3">
+        <thead className="border-b text-left text-xs text-gray-500">
+          <tr><th className="pb-1 font-medium">รายการ</th><th className="pb-1 text-right font-medium">จำนวนเงิน</th></tr>
+        </thead>
         <tbody>
           {sale.items.map((item) => (
             <tr key={item.id}>
@@ -103,8 +106,10 @@ const Receipt = forwardRef<HTMLDivElement, { sale: Sale }>(function Receipt({ sa
             )}
           </div>
         )}
+        {sale.note && <div className="border-t pt-1 mt-1 text-xs text-gray-600">หมายเหตุ: {sale.note}</div>}
         {sale.status === "voided" && <div className="text-center text-red-600 font-medium pt-1">ยกเลิกบิลแล้ว</div>}
       </div>
+      <p className="mt-4 text-center text-xs text-gray-500">ขอบคุณที่ใช้บริการ</p>
     </div>
   );
 });

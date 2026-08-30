@@ -312,6 +312,8 @@ class PrintThermalOut(BaseModel):
 @router.post("/sales/{sale_id}/print-thermal", response_model=PrintThermalOut)
 def print_sale_thermal(sale_id: int, db: Session = Depends(get_db), membership: ShopMembership = Depends(get_active_shop_membership)):
     sale = _get_sale(db, sale_id, membership.shop_id)
+    if sale.status != SaleStatus.completed:
+        raise HTTPException(status_code=400, detail="พิมพ์ใบเสร็จได้เฉพาะบิลที่ชำระเงินสำเร็จแล้ว")
     settings = get_or_create_settings(db, membership.shop_id)
     totals = pos_service.compute_totals(db, sale)
     data = build_escpos_receipt(sale, settings, totals)

@@ -1,12 +1,13 @@
 "use client";
 
-import { Lock, Delete } from "lucide-react";
+import { Fingerprint, Lock, Delete } from "lucide-react";
 import { useState } from "react";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { isNativeAndroid } from "@/lib/mobile";
 
 export default function LockScreen() {
-  const { user, unlock, logout } = useAuth();
+  const { user, unlock, unlockWithBiometric, logout } = useAuth();
   const [username, setUsername] = useState(user?.username ?? "");
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +30,18 @@ export default function LockScreen() {
   function press(digit: string) {
     if (submitting) return;
     setPin((p) => (p + digit).slice(0, 6));
+  }
+
+  async function unlockBiometric() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await unlockWithBiometric();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ยืนยันตัวตนด้วยอุปกรณ์ไม่สำเร็จ");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -58,6 +71,12 @@ export default function LockScreen() {
         </div>
 
         {error && <div className="mb-3 text-xs text-red-600 text-center">{error}</div>}
+
+        {isNativeAndroid() && <button
+          onClick={() => void unlockBiometric()}
+          disabled={submitting}
+          className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 py-2.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+        ><Fingerprint className="h-4 w-4" />ปลดล็อกด้วยลายนิ้วมือ / ใบหน้า</button>}
 
         <div className="grid grid-cols-3 gap-2 mb-3">
           {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (

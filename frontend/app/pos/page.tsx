@@ -72,6 +72,10 @@ export default function PosPage() {
     }
   }
 
+  function handleBrowserPrint() {
+    window.print();
+  }
+
   const [modifierPicker, setModifierPicker] = useState<Product | null>(null);
   const [selectedModifierIds, setSelectedModifierIds] = useState<number[]>([]);
 
@@ -1067,6 +1071,13 @@ export default function PosPage() {
               >
                 <FileDown className="w-4 h-4" />
                 PDF
+              </button>
+              <button
+                onClick={handleBrowserPrint}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded border bg-white hover:bg-gray-50 transition-colors"
+              >
+                <Printer className="w-4 h-4" />
+                เลือกเครื่องพิมพ์
               </button>
               <button
                 onClick={handlePrintThermal}

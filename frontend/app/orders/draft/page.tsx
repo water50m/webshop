@@ -40,7 +40,7 @@ export default function DraftOrdersPage() {
             <div className="flex justify-between items-start">
               <div>
                 <div className="font-medium">
-                  <Link href={`/orders/draft/${d.id}`} className="hover:underline">
+                  <Link href={`/orders/draft/detail?id=${d.id}`} className="hover:underline">
                     Draft #{d.id}
                   </Link>{" "}
                   (conversation #{d.conversation_id})

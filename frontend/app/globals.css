@@ -186,3 +186,36 @@ textarea:focus-visible {
     font-size: 1.125rem;
   }
 }
+
+/* Thermal printers installed in Windows/macOS are selected from the browser print dialog. */
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .receipt-document,
+  .receipt-document *,
+  .order-summary-document,
+  .order-summary-document * {
+    visibility: visible !important;
+  }
+
+  .receipt-document,
+  .order-summary-document {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 80mm !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 4mm !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}

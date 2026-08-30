@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, loginWithFacebook: loginWithNativeFacebook } = useAuth();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +32,11 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
+      const nativeAttempt = await loginWithNativeFacebook();
+      if (nativeAttempt) {
+        router.replace(`/onboarding?facebook_login=${encodeURIComponent(nativeAttempt)}`);
+        return;
+      }
       const { api } = await import("@/lib/api");
       window.location.assign((await api.startFacebookLogin()).authorization_url);
     } catch (err) {

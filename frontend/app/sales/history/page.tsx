@@ -53,6 +53,10 @@ export default function SalesHistoryPage() {
     }
   }
 
+  function handleBrowserPrint() {
+    window.print();
+  }
+
   function showError(e: unknown) {
     setError(e instanceof ApiError ? e.message : String(e));
   }
@@ -75,6 +79,13 @@ export default function SalesHistoryPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => void reload(), 0);
     return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const saleId = Number(new URLSearchParams(window.location.search).get("sale"));
+    if (saleId > 0) void openDetail(saleId);
+    // The query parameter is intentionally read only when the page is opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -224,6 +235,13 @@ export default function SalesHistoryPage() {
               >
                 <FileDown className="w-4 h-4" />
                 PDF
+              </button>
+              <button
+                onClick={handleBrowserPrint}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded border bg-white hover:bg-gray-50 transition-colors"
+              >
+                <Printer className="w-4 h-4" />
+                เลือกเครื่องพิมพ์
               </button>
               <button
                 onClick={handlePrintThermal}

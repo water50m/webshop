@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ExternalLink, Facebook, LoaderCircle, RefreshCw } from "lucide-react";
+import { CheckCircle2, ExternalLink, LoaderCircle, MessageCircle, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, ApiError, FacebookOnboardingPage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -64,7 +64,7 @@ export default function MyFacebookPagesPage() {
     <main className="mx-auto max-w-3xl p-4 md:p-6">
       <section className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm">
         <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-[#1877f2] p-2.5 text-white"><Facebook className="h-6 w-6" /></div>
+          <div className="rounded-xl bg-[#1877f2] p-2.5 text-white"><MessageCircle className="h-6 w-6" /></div>
           <div><h1 className="text-xl font-semibold text-slate-900">เพจ Facebook ของฉัน</h1><p className="mt-1 text-sm text-slate-600">ตรวจสอบเฉพาะเพจที่บัญชี Facebook นี้มีสิทธิ์จัดการ และลงทะเบียนเป็นร้านแยกได้</p></div>
         </div>
         <button onClick={() => void checkFacebookPages()} disabled={busy} className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-[#1877f2] px-4 text-sm font-medium text-white hover:bg-[#166fe5] disabled:cursor-not-allowed disabled:opacity-60">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}ตรวจสอบเพจของฉัน</button>

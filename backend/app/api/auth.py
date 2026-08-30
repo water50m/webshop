@@ -51,6 +51,21 @@ class FacebookStartOut(BaseModel):
     authorization_url: str
 
 
+class NativeSessionOut(UserOut):
+    """Only returned to a Capacitor client after a successful credential check."""
+
+    session_token: str
+
+
+class FacebookNativeLoginIn(BaseModel):
+    access_token: str
+
+
+class FacebookNativeLoginOut(BaseModel):
+    user: NativeSessionOut
+    attempt_id: str
+
+
 class FacebookPageOut(BaseModel):
     id: str
     name: str
@@ -99,6 +114,62 @@ def _set_session(response: Response, db: Session, user: User) -> None:
     session = create_session(db, user)
     db.commit()
     response.set_cookie(SESSION_COOKIE_NAME, session.token, httponly=True, samesite="lax", max_age=7 * 24 * 60 * 60)
+
+
+def _is_native_client(request: Request) -> bool:
+    return request.headers.get("X-SStore-Client", "").lower() == "android"
+
+
+def _native_session_out(db: Session, user: User) -> NativeSessionOut:
+    session = create_session(db, user)
+    db.commit()
+    return NativeSessionOut(**_serialize(user).model_dump(), session_token=session.token)
+
+
+def _facebook_pages_from_native_token(access_token: str) -> tuple[str, str, str, list[dict]]:
+    """Validate a native SDK token with Meta and retain only encrypted Page tokens."""
+    try:
+        debug_response = httpx.get(
+            f"{_GRAPH_API}/debug_token",
+            params={"input_token": access_token, "access_token": f"{settings.meta_app_id}|{settings.meta_app_secret}"},
+            timeout=15.0,
+        )
+        debug_response.raise_for_status()
+        debug_data = debug_response.json().get("data", {})
+        if not debug_data.get("is_valid") or str(debug_data.get("app_id") or "") != settings.meta_app_id:
+            raise ValueError("invalid app token")
+        profile_response = httpx.get(
+            f"{_GRAPH_API}/me",
+            params={"fields": "id,name,picture.type(large)", "access_token": access_token},
+            timeout=15.0,
+        )
+        profile_response.raise_for_status()
+        profile = profile_response.json()
+        facebook_user_id = str(profile.get("id") or "")
+        if not facebook_user_id:
+            raise ValueError("missing Facebook user id")
+        pages_response = httpx.get(
+            f"{_GRAPH_API}/me/accounts",
+            params={"fields": "id,name,category,tasks,access_token", "access_token": access_token},
+            timeout=15.0,
+        )
+        pages_response.raise_for_status()
+        pages = [
+            {
+                "id": str(page.get("id") or ""),
+                "name": str(page.get("name") or ""),
+                "category": str(page.get("category") or ""),
+                "tasks": [str(task) for task in page.get("tasks", [])],
+                "access_token": encrypt_access_token(str(page.get("access_token") or "")),
+            }
+            for page in pages_response.json().get("data", [])
+            if page.get("id") and page.get("access_token")
+        ]
+        picture = profile.get("picture")
+        picture_url = str(picture.get("data", {}).get("url") or "") if isinstance(picture, dict) else ""
+        return facebook_user_id, str(profile.get("name") or "").strip(), picture_url, pages
+    except (httpx.HTTPError, ValueError, TypeError, MetaTokenConfigurationError):
+        raise HTTPException(status_code=401, detail="ไม่สามารถยืนยัน Facebook Login จากแอปได้") from None
 
 
 def complete_facebook_login(
@@ -160,6 +231,33 @@ def facebook_start(db: Session = Depends(get_db)):
     db.commit()
     params = {"client_id": settings.meta_app_id, "redirect_uri": settings.meta_oauth_redirect_uri, "state": attempt.id, "response_type": "code", "scope": ",".join(_FACEBOOK_SCOPES), "code_challenge": code_challenge, "code_challenge_method": "S256"}
     return FacebookStartOut(authorization_url=f"https://www.facebook.com/v22.0/dialog/oauth?{urlencode(params)}")
+
+
+@router.post("/facebook/native", response_model=FacebookNativeLoginOut)
+def facebook_native_login(payload: FacebookNativeLoginIn, request: Request, db: Session = Depends(get_db)):
+    """Exchange a token issued by the Android Facebook SDK for an SStore session.
+
+    Page tokens are encrypted before entering the short-lived selection attempt;
+    the Facebook user token is discarded immediately after this request.
+    """
+    _require_facebook_oauth()
+    if not _is_native_client(request):
+        raise HTTPException(status_code=400, detail="endpoint นี้ใช้สำหรับแอป Android เท่านั้น")
+    facebook_user_id, facebook_name, picture_url, pages = _facebook_pages_from_native_token(payload.access_token)
+    attempt = MetaOAuthAttempt(
+        id=token_urlsafe(32),
+        purpose="facebook_login",
+        facebook_user_id=facebook_user_id,
+        available_pages=pages,
+        expires_at=datetime.utcnow() + _ATTEMPT_TTL,
+        callback_completed_at=datetime.utcnow(),
+    )
+    db.add(attempt)
+    db.flush()
+    user = complete_facebook_login(db, attempt, facebook_name, picture_url)
+    attempt.initiated_by_user_id = user.id
+    db.commit()
+    return FacebookNativeLoginOut(user=_native_session_out(db, user), attempt_id=attempt.id)
 
 
 def _pending_for_user(db: Session, attempt_id: str, user: User, purpose: str = "facebook_login") -> MetaOAuthAttempt:
@@ -307,11 +405,13 @@ def facebook_select_page(attempt_id: str, payload: FacebookPageIn, db: Session =
     return FacebookPageOut(id=channel.external_id, name=channel.name, registered=True, channel_id=channel.id, shop_id=channel.shop_id)
 
 
-@router.post("/login", response_model=UserOut)
-def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
+@router.post("/login", response_model=UserOut | NativeSessionOut)
+def login(payload: LoginIn, response: Response, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == payload.username).first()
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+    if _is_native_client(request):
+        return _native_session_out(db, user)
     session = create_session(db, user)
     db.commit()
     response.set_cookie(
@@ -324,11 +424,13 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
     return _serialize(user)
 
 
-@router.post("/unlock", response_model=UserOut)
-def unlock(payload: UnlockIn, response: Response, db: Session = Depends(get_db)):
+@router.post("/unlock", response_model=UserOut | NativeSessionOut)
+def unlock(payload: UnlockIn, response: Response, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == payload.username).first()
     if user is None or user.pin_hash is None or not verify_pin(payload.pin, user.pin_hash):
         raise HTTPException(status_code=401, detail="ชื่อผู้ใช้หรือ PIN ไม่ถูกต้อง")
+    if _is_native_client(request):
+        return _native_session_out(db, user)
     session = create_session(db, user)
     db.commit()
     response.set_cookie(
@@ -353,6 +455,11 @@ def set_pin(payload: SetPinIn, db: Session = Depends(get_db), user: User = Depen
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        authorization = request.headers.get("Authorization", "")
+        scheme, _, bearer_token = authorization.partition(" ")
+        if scheme.lower() == "bearer" and bearer_token:
+            token = bearer_token
     if token:
         delete_session(db, token)
         db.commit()

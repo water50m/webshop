@@ -1,9 +1,14 @@
+import { isNativeAndroid, nativeSessionToken } from "./mobile";
+
 // Resolve this in the browser, not while Next.js builds the bundle.  On a
 // phone/tablet, localhost means that device itself; the page hostname is the
 // computer that is actually running the backend.
 const runtimeApiBaseUrl = () => {
   const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (configuredApiBaseUrl) return configuredApiBaseUrl;
+  if (isNativeAndroid()) {
+    throw new Error("ต้องกำหนด NEXT_PUBLIC_API_BASE_URL เป็น HTTPS API URL ก่อน build Android");
+  }
   const location = globalThis.location;
   // Production is served by the same Next.js origin, which proxies /api to
   // FastAPI.  Keep the explicit port for the local frontend dev server.
@@ -20,6 +25,15 @@ export const API_BASE_URL = runtimeApiBaseUrl();
 const activeShopHeaders = (): Record<string, string> => {
   const shopId = typeof window === "undefined" ? null : window.localStorage.getItem("active-shop-id");
   return shopId ? { "X-Shop-ID": shopId } : {};
+};
+
+const authenticatedHeaders = (): Record<string, string> => {
+  const token = nativeSessionToken();
+  return {
+    ...activeShopHeaders(),
+    ...(isNativeAndroid() ? { "X-SStore-Client": "android" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 };
 
 export function resolveImageUrl(url: string | null | undefined): string | null {
@@ -644,7 +658,11 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...activeShopHeaders(), ...(init?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...authenticatedHeaders(),
+      ...(init?.headers ?? {}),
+    },
     cache: "no-store",
     credentials: "include",
   });
@@ -672,6 +690,9 @@ export type AuthUser = {
   has_facebook_identity: boolean;
 };
 
+export type NativeSessionUser = AuthUser & { session_token?: string };
+export type NativeFacebookLogin = { user: NativeSessionUser; attempt_id: string };
+
 export type FacebookOnboardingPage = {
   id: string;
   name: string;
@@ -697,6 +718,8 @@ export type UserUpdateIn = {
 
 export const api = {
   health: () => request<{ status: string }>("/health"),
+  nativeFacebookLogin: (accessToken: string) =>
+    request<NativeFacebookLogin>("/api/auth/facebook/native", { method: "POST", body: JSON.stringify({ access_token: accessToken }) }),
   startFacebookLogin: () => request<{ authorization_url: string }>("/api/auth/facebook/start", { method: "POST" }),
   getFacebookLoginPending: (attemptId: string) => request<FacebookOnboardingPending>(`/api/auth/facebook/pending/${attemptId}`),
   registerFacebookLoginPage: (attemptId: string, pageId: string) => request<FacebookOnboardingPage>(`/api/auth/facebook/pending/${attemptId}/register`, { method: "POST", body: JSON.stringify({ page_id: pageId }) }),
@@ -735,9 +758,9 @@ export const api = {
     request<OrderOption>(`/api/parser-v2/options/${id}`, { method: "PATCH", body: JSON.stringify({ is_available: isAvailable }) }),
 
   login: (username: string, password: string) =>
-    request<AuthUser>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+    request<NativeSessionUser>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   unlock: (username: string, pin: string) =>
-    request<AuthUser>("/api/auth/unlock", { method: "POST", body: JSON.stringify({ username, pin }) }),
+    request<NativeSessionUser>("/api/auth/unlock", { method: "POST", body: JSON.stringify({ username, pin }) }),
   setPin: (pin: string) => request<{ ok: boolean }>("/api/auth/set-pin", { method: "POST", body: JSON.stringify({ pin }) }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   me: () => request<AuthUser>("/api/auth/me"),
@@ -780,7 +803,7 @@ export const api = {
       body: form,
       cache: "no-store",
       credentials: "include",
-      headers: activeShopHeaders(),
+      headers: authenticatedHeaders(),
     });
     if (!response.ok) {
       const body = await response.text();
@@ -884,7 +907,7 @@ export const api = {
       method: "POST",
       body: formData,
       credentials: "include",
-      headers: activeShopHeaders(),
+      headers: authenticatedHeaders(),
     });
     if (!res.ok) {
       const body = await res.text();

@@ -11,6 +11,11 @@ SESSION_COOKIE_NAME = "session_token"
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if not token:
+        authorization = request.headers.get("Authorization", "")
+        scheme, _, bearer_token = authorization.partition(" ")
+        if scheme.lower() == "bearer" and bearer_token:
+            token = bearer_token
+    if not token:
         raise HTTPException(status_code=401, detail="ยังไม่ได้เข้าสู่ระบบ")
     user = get_session_user(db, token)
     if user is None:

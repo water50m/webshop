@@ -32,7 +32,9 @@ class Settings(BaseSettings):
 
     line_channel_secret: str = ""
 
-    cors_origins: str = "http://localhost:3000"
+    # Capacitor Android serves its bundled frontend from http://localhost.
+    # It is a fixed WebView origin, not a LAN wildcard.
+    cors_origins: str = "http://localhost:3000,http://localhost,capacitor://localhost"
     # Development may be accessed with localhost or this computer's current
     # private-LAN address.  Do not hard-code a single address because it changes
     # when the computer is moved to another network.

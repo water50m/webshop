@@ -71,7 +71,11 @@ def _serialize_message(message: Message) -> MessageOut:
         direction=message.direction,
         text=message.text,
         created_at=message.created_at.isoformat(),
-        sent_by_display_name=(message.sent_by.display_name or message.sent_by.username) if message.sent_by else None,
+        sent_by_display_name=(
+            (message.sent_by.facebook_identity.facebook_name if message.sent_by.facebook_identity else "")
+            or message.sent_by.display_name
+            or message.sent_by.username
+        ) if message.sent_by else None,
     )
 
 
