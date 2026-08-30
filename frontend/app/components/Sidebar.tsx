@@ -25,6 +25,7 @@ import {
   ClipboardCheck,
   BrainCircuit,
   MessageCircle,
+  Facebook,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -36,7 +37,7 @@ import { api, ApiError, Shop, UserRole } from "@/lib/api";
 
 const COLLAPSE_STORAGE_KEY = "sidebar-collapsed";
 
-const NAV_ITEMS: { href: string; label: string; icon: typeof Store; roles?: UserRole[] }[] = [
+const NAV_ITEMS: { href: string; label: string; icon: typeof Store; roles?: UserRole[]; facebookOnly?: boolean }[] = [
   { href: "/", label: "หน้าหลัก", icon: Home },
   { href: "/pos", label: "หน้าขาย (POS)", icon: LayoutDashboard },
   { href: "/sales/history", label: "ประวัติบิล", icon: History },
@@ -58,6 +59,7 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof Store; roles?: User
   { href: "/print-bridge", label: "Print Bridge", icon: Radio, roles: ["owner", "manager"] },
   { href: "/users", label: "ผู้ใช้งาน", icon: Users, roles: ["owner"] },
   { href: "/facebook", label: "เชื่อม Facebook Page", icon: MessageCircle, roles: ["owner"] },
+  { href: "/my-pages", label: "เพจ Facebook ของฉัน", icon: Facebook, facebookOnly: true },
   { href: "/page-team", label: "ทีมและสิทธิ์เพจ", icon: ShieldAlert },
 ];
 
@@ -140,7 +142,7 @@ export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen
     }
   }
 
-  const visibleItems = NAV_ITEMS.filter((item) => !item.roles || (user && item.roles.includes(user.role)));
+  const visibleItems = NAV_ITEMS.filter((item) => (!item.roles || (user && item.roles.includes(user.role))) && (!item.facebookOnly || user?.has_facebook_identity));
   const activeShop = shops.find((shop) => String(shop.id) === activeShopId);
 
   return (

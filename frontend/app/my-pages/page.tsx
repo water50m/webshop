@@ -1,0 +1,77 @@
+"use client";
+
+import { CheckCircle2, ExternalLink, Facebook, LoaderCircle, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { api, ApiError, FacebookOnboardingPage } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+
+export default function MyFacebookPagesPage() {
+  const { user } = useAuth();
+  const [pages, setPages] = useState<FacebookOnboardingPage[]>([]);
+  const [attemptId, setAttemptId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const resultId = params.get("facebook_pages");
+    const callbackError = params.get("facebook_error");
+    if (callbackError) {
+      setError(callbackError === "identity_mismatch" ? "บัญชี Facebook ที่ยืนยันไม่ตรงกับบัญชีที่ล็อกอินอยู่" : "ไม่สามารถตรวจสอบเพจ Facebook ได้");
+      window.history.replaceState({}, "", "/my-pages");
+      return;
+    }
+    if (!resultId || !user?.has_facebook_identity) return;
+    setBusy(true);
+    api.getFacebookAccountPages(resultId)
+      .then((result) => { setAttemptId(result.id); setPages(result.pages); })
+      .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
+      .finally(() => setBusy(false));
+    window.history.replaceState({}, "", "/my-pages");
+  }, [user?.has_facebook_identity]);
+
+  async function checkFacebookPages() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { authorization_url } = await api.startFacebookAccountPages();
+      window.location.assign(authorization_url);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+      setBusy(false);
+    }
+  }
+
+  async function registerPage(page: FacebookOnboardingPage) {
+    if (!attemptId || page.registered) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const registered = await api.registerFacebookAccountPage(attemptId, page.id);
+      window.localStorage.setItem("active-shop-id", String(registered.shop_id));
+      window.location.assign("/inbox");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+      setBusy(false);
+    }
+  }
+
+  if (!user?.has_facebook_identity) {
+    return <main className="p-6 text-sm text-slate-600">หน้านี้ใช้ได้เฉพาะบัญชีที่ล็อกอินด้วย Facebook</main>;
+  }
+
+  return (
+    <main className="mx-auto max-w-3xl p-4 md:p-6">
+      <section className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-[#1877f2] p-2.5 text-white"><Facebook className="h-6 w-6" /></div>
+          <div><h1 className="text-xl font-semibold text-slate-900">เพจ Facebook ของฉัน</h1><p className="mt-1 text-sm text-slate-600">ตรวจสอบเฉพาะเพจที่บัญชี Facebook นี้มีสิทธิ์จัดการ และลงทะเบียนเป็นร้านแยกได้</p></div>
+        </div>
+        <button onClick={() => void checkFacebookPages()} disabled={busy} className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-[#1877f2] px-4 text-sm font-medium text-white hover:bg-[#166fe5] disabled:cursor-not-allowed disabled:opacity-60">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}ตรวจสอบเพจของฉัน</button>
+      </section>
+
+      {error && <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+      {pages.length > 0 && <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4"><h2 className="font-semibold text-slate-900">เพจที่ตรวจพบ</h2><ul className="mt-3 divide-y divide-slate-100">{pages.map((page) => <li key={page.id} className="flex items-center justify-between gap-4 py-3"><div><p className="font-medium text-slate-800">{page.name}</p><p className="text-xs text-slate-500">Page ID: {page.id}</p></div>{page.registered ? <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700"><CheckCircle2 className="h-4 w-4" />ลงทะเบียนแล้ว</span> : <button onClick={() => void registerPage(page)} disabled={busy} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-60"><ExternalLink className="h-3.5 w-3.5" />ลงทะเบียนเพจนี้</button>}</li>)}</ul></section>}
+    </main>
+  );
+}

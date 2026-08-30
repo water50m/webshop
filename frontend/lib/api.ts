@@ -669,6 +669,7 @@ export type AuthUser = {
   display_name: string;
   role: UserRole;
   has_pin: boolean;
+  has_facebook_identity: boolean;
 };
 
 export type FacebookOnboardingPage = {
@@ -740,6 +741,10 @@ export const api = {
   setPin: (pin: string) => request<{ ok: boolean }>("/api/auth/set-pin", { method: "POST", body: JSON.stringify({ pin }) }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   me: () => request<AuthUser>("/api/auth/me"),
+  startFacebookAccountPages: () => request<{ authorization_url: string }>("/api/auth/facebook/pages/start", { method: "POST" }),
+  getFacebookAccountPages: (attemptId: string) => request<FacebookOnboardingPending>(`/api/auth/facebook/pages/pending/${attemptId}`),
+  registerFacebookAccountPage: (attemptId: string, pageId: string) =>
+    request<FacebookOnboardingPage>(`/api/auth/facebook/pages/pending/${attemptId}/register`, { method: "POST", body: JSON.stringify({ page_id: pageId }) }),
 
   listUsers: () => request<AuthUser[]>("/api/users"),
   createUser: (user: UserIn) => request<AuthUser>("/api/users", { method: "POST", body: JSON.stringify(user) }),
