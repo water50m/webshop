@@ -105,6 +105,14 @@ def facebook_onboarding_url() -> str:
     return urlunsplit((parts.scheme, parts.netloc, "/onboarding", "", ""))
 
 
+def facebook_my_pages_url() -> str:
+    """Return the absolute page-management route even when the configured
+    frontend callback URL currently points at /facebook."""
+    configured = _facebook_frontend_url()
+    parts = urlsplit(configured)
+    return urlunsplit((parts.scheme, parts.netloc, "/my-pages", "", ""))
+
+
 def _require_facebook_oauth() -> None:
     if not all((settings.meta_app_id, settings.meta_app_secret, settings.meta_oauth_redirect_uri, _facebook_frontend_url(), settings.meta_token_encryption_key)):
         raise HTTPException(status_code=503, detail="ยังตั้งค่า Meta OAuth ไม่ครบ")
@@ -412,6 +420,31 @@ def login(payload: LoginIn, response: Response, request: Request, db: Session = 
         raise HTTPException(status_code=401, detail="ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
     if _is_native_client(request):
         return _native_session_out(db, user)
+    session = create_session(db, user)
+    db.commit()
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=session.token,
+        httponly=True,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,
+    )
+    return _serialize(user)
+
+
+@router.post("/dev-bypass", response_model=UserOut)
+def dev_bypass_login(response: Response, request: Request, db: Session = Depends(get_db)):
+    """Create a normal session for local UI development without credentials."""
+    if not settings.dev_login_bypass_enabled:
+        raise HTTPException(status_code=404, detail="ไม่พบหน้านี้")
+    # The bypass is intentionally unavailable to native builds, which need a
+    # real account token, and uses the existing owner account instead of a
+    # separate hidden identity.
+    if _is_native_client(request):
+        raise HTTPException(status_code=404, detail="ไม่พบหน้านี้")
+    user = db.query(User).filter(User.role == UserRole.owner).order_by(User.id).first()
+    if user is None:
+        raise HTTPException(status_code=503, detail="ยังไม่มีผู้ดูแลระบบสำหรับโหมดพัฒนา")
     session = create_session(db, user)
     db.commit()
     response.set_cookie(

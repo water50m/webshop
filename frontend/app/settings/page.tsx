@@ -329,6 +329,9 @@ export default function SettingsPage() {
                 ปุ่ม &quot;พิมพ์ผ่านเครื่อง&quot; ในหน้าใบเสร็จจะส่งคำสั่งพิมพ์ ESC/POS ไปที่ IP นี้โดยตรง — ถ้ายังไม่มีเครื่องพิมพ์เชื่อมต่อ
                 ระบบจะแจ้งว่าเชื่อมต่อไม่สำเร็จ ใช้ปุ่ม PDF แทนได้
               </p>
+              <a href="/print-bridge" className="mt-3 inline-flex rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100">
+                จัดการ Print Bridge (ESP32)
+              </a>
             </section>
 
             {user?.role === "owner" && dbConfig && (

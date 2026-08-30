@@ -263,6 +263,7 @@ def oauth_callback(code: str | None = None, state: str | None = None, error: str
         response.set_cookie(SESSION_COOKIE_NAME, session.token, httponly=True, samesite="lax", max_age=7 * 24 * 60 * 60)
         return response
     if attempt.purpose == "account_pages":
+        from app.api.auth import facebook_my_pages_url
         user = db.get(User, attempt.initiated_by_user_id)
         identity = db.query(FacebookIdentity).filter_by(user_id=user.id if user else None).first()
         if identity is None or identity.facebook_user_id != facebook_user_id:
@@ -270,12 +271,12 @@ def oauth_callback(code: str | None = None, state: str | None = None, error: str
             # created this SStore session; never let an account switch here.
             attempt.completed_at = datetime.utcnow()
             db.commit()
-            return RedirectResponse(f"{settings.meta_oauth_frontend_url.rstrip('/')}/my-pages?facebook_error=identity_mismatch")
+            return RedirectResponse(f"{facebook_my_pages_url()}?facebook_error=identity_mismatch")
         identity.facebook_name = facebook_name[:255] or identity.facebook_name
         identity.profile_picture_url = profile_picture_url[:2000] or identity.profile_picture_url
         identity.last_verified_at = datetime.utcnow()
         db.commit()
-        return RedirectResponse(f"{settings.meta_oauth_frontend_url.rstrip('/')}/my-pages?facebook_pages={attempt.id}")
+        return RedirectResponse(f"{facebook_my_pages_url()}?facebook_pages={attempt.id}")
     db.commit()
     return RedirectResponse(f"{settings.meta_oauth_frontend_url}?facebook_connection={attempt.id}")
 

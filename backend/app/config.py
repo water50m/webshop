@@ -32,6 +32,10 @@ class Settings(BaseSettings):
 
     line_channel_secret: str = ""
 
+    # Local development convenience only.  This remains disabled unless the
+    # local .env explicitly enables it; never set it in a deployed environment.
+    dev_login_bypass_enabled: bool = False
+
     # Capacitor Android serves its bundled frontend from http://localhost.
     # It is a fixed WebView origin, not a LAN wildcard.
     cors_origins: str = "http://localhost:3000,http://localhost,capacitor://localhost"

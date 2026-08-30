@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useState } from "react";
-import { api, Sale, ShopSettings } from "@/lib/api";
+import { api, resolveImageUrl, Sale, ShopSettings } from "@/lib/api";
 
 function money(n: number): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -12,27 +12,35 @@ const METHOD_LABEL: Record<string, string> = {
   transfer: "โอน/พร้อมเพย์",
 };
 
-const Receipt = forwardRef<HTMLDivElement, { sale: Sale }>(function Receipt({ sale }, ref) {
+const Receipt = forwardRef<HTMLDivElement, { sale: Sale; shop?: ShopSettings }>(function Receipt({ sale, shop: suppliedShop }, ref) {
   const [shop, setShop] = useState<ShopSettings | null>(null);
 
   useEffect(() => {
-    api.getSettings().then(setShop).catch(() => setShop(null));
-  }, []);
+    if (!suppliedShop) api.getSettings().then(setShop).catch(() => setShop(null));
+  }, [suppliedShop]);
+
+  const receiptShop = suppliedShop ?? shop;
+  const paperWidth = receiptShop?.receipt_paper_width ?? 80;
 
   return (
-    <div ref={ref} className="receipt-document bg-white rounded p-6 w-80 print:w-full print:shadow-none">
-      {shop?.shop_name && (
+    <div ref={ref} className={`receipt-document receipt-document--${paperWidth} bg-white rounded p-6 w-80 print:w-full print:shadow-none`}>
+      {receiptShop && (
         <div className="text-center mb-2">
-          <div className="font-semibold">{shop.shop_name}</div>
-          {shop.address && <div className="text-xs text-gray-500 whitespace-pre-line">{shop.address}</div>}
-          {shop.tax_id && <div className="text-xs text-gray-500">เลขประจำตัวผู้เสียภาษี: {shop.tax_id}</div>}
+          {receiptShop.receipt_show_logo !== false && receiptShop.receipt_logo_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={resolveImageUrl(receiptShop.receipt_logo_url) ?? undefined} alt="โลโก้ร้าน" className="receipt-logo mx-auto mb-2 max-h-16 max-w-32 object-contain" />
+          )}
+          {receiptShop.receipt_show_logo !== false && !receiptShop.receipt_logo_url && <div aria-label="ตำแหน่งโลโก้ร้าน" className="receipt-logo-placeholder mx-auto mb-2 h-10 w-10 rounded-full bg-slate-900" />}
+          {receiptShop.shop_name && <div className="font-semibold">{receiptShop.shop_name}</div>}
+          {receiptShop.address && <div className="text-xs text-gray-500 whitespace-pre-line">{receiptShop.address}</div>}
+          {receiptShop.tax_id && <div className="text-xs text-gray-500">เลขประจำตัวผู้เสียภาษี: {receiptShop.tax_id}</div>}
         </div>
       )}
       <h2 className="text-center font-semibold mb-2">ใบเสร็จรับเงิน</h2>
       <div className="border-y border-dashed py-1.5 mb-3 text-xs text-gray-600 space-y-0.5">
         <div className="flex justify-between"><span>เลขที่ใบเสร็จ</span><span>{sale.receipt_no ?? sale.id}</span></div>
         <div className="flex justify-between"><span>วันเวลา</span><span>{sale.completed_at ? new Date(sale.completed_at).toLocaleString("th-TH") : new Date().toLocaleString("th-TH")}</span></div>
-        {sale.created_by_name && <div className="flex justify-between"><span>ผู้รับเงิน</span><span>{sale.created_by_name}</span></div>}
+        {receiptShop?.receipt_show_cashier !== false && sale.created_by_name && <div className="flex justify-between"><span>ผู้รับเงิน</span><span>{sale.created_by_name}</span></div>}
       </div>
       <table className="w-full text-sm mb-3">
         <thead className="border-b text-left text-xs text-gray-500">
@@ -80,7 +88,7 @@ const Receipt = forwardRef<HTMLDivElement, { sale: Sale }>(function Receipt({ sa
             <span>{money(sale.change_amount ?? 0)}</span>
           </div>
         )}
-        {sale.customer_phone && (
+        {receiptShop?.receipt_show_member !== false && sale.customer_phone && (
           <div className="border-t pt-1 mt-1 text-xs text-gray-600">
             <div className="flex justify-between">
               <span>สมาชิก</span>
@@ -109,7 +117,7 @@ const Receipt = forwardRef<HTMLDivElement, { sale: Sale }>(function Receipt({ sa
         {sale.note && <div className="border-t pt-1 mt-1 text-xs text-gray-600">หมายเหตุ: {sale.note}</div>}
         {sale.status === "voided" && <div className="text-center text-red-600 font-medium pt-1">ยกเลิกบิลแล้ว</div>}
       </div>
-      <p className="mt-4 text-center text-xs text-gray-500">ขอบคุณที่ใช้บริการ</p>
+      {(receiptShop?.receipt_footer_text || "ขอบคุณที่ใช้บริการ") && <p className="mt-4 text-center text-xs text-gray-500">{receiptShop?.receipt_footer_text || "ขอบคุณที่ใช้บริการ"}</p>}
     </div>
   );
 });

@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 
 export default function LoginPage() {
-  const { login, loginWithFacebook: loginWithNativeFacebook } = useAuth();
+  const { login, loginWithDevBypass, loginWithFacebook: loginWithNativeFacebook } = useAuth();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -42,6 +42,19 @@ export default function LoginPage() {
     } catch (err) {
       setSubmitting(false);
       setError(err instanceof ApiError ? err.message : "ไม่สามารถเริ่ม Facebook Login ได้");
+    }
+  }
+
+  async function handleDevBypass() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await loginWithDevBypass();
+      router.replace("/pos");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "ไม่สามารถเข้าโหมดพัฒนาได้");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -93,6 +106,16 @@ export default function LoginPage() {
         </button>
           </form>
         </details>
+        {process.env.NODE_ENV === "development" && (
+          <button
+            type="button"
+            onClick={() => void handleDevBypass()}
+            disabled={submitting}
+            className="mt-4 w-full rounded-lg border border-dashed border-amber-400 bg-amber-50 py-2 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-60"
+          >
+            ข้ามการเข้าสู่ระบบ (เฉพาะโหมดพัฒนา)
+          </button>
+        )}
       </div>
     </div>
   );

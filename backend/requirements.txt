@@ -11,5 +11,6 @@ python-multipart==0.0.9
 pythainlp==5.3.5
 rapidfuzz==3.14.5
 qrcode[pil]==8.2
+pillow==11.1.0
 cryptography==46.0.5
 redis==5.2.1

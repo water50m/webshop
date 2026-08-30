@@ -218,4 +218,12 @@ textarea:focus-visible {
     border-radius: 0 !important;
     box-shadow: none !important;
   }
+
+  .receipt-document--58 {
+    width: 58mm !important;
+  }
+
+  .receipt-logo {
+    filter: grayscale(1) contrast(1.5);
+  }
 }

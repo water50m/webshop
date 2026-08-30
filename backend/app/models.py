@@ -904,6 +904,12 @@ class ShopSettings(Base):
     low_stock_line_target_id: Mapped[str] = mapped_column(String(255), default="")
     receipt_printer_ip: Mapped[str] = mapped_column(String(255), default="")
     receipt_printer_port: Mapped[int] = mapped_column(default=9100)
+    receipt_paper_width: Mapped[int] = mapped_column(default=80)
+    receipt_logo_url: Mapped[str] = mapped_column(String(1000), default="")
+    receipt_show_logo: Mapped[bool] = mapped_column(Boolean, default=True)
+    receipt_footer_text: Mapped[str] = mapped_column(String(255), default="ขอบคุณที่ใช้บริการ")
+    receipt_show_cashier: Mapped[bool] = mapped_column(Boolean, default=True)
+    receipt_show_member: Mapped[bool] = mapped_column(Boolean, default=True)
     inventory_mode: Mapped[InventoryMode] = mapped_column(Enum(InventoryMode), default=InventoryMode.simple)
     order_parser_mode: Mapped[OrderParserMode] = mapped_column(
         Enum(OrderParserMode), default=OrderParserMode.algorithm

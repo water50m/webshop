@@ -124,6 +124,18 @@ def on_startup():
             connection.execute(text("ALTER TABLE products ADD COLUMN show_in_menu_answer BOOLEAN NOT NULL DEFAULT TRUE"))
         if "menu_answer_format" not in settings_columns:
             connection.execute(text("ALTER TABLE shop_settings ADD COLUMN menu_answer_format VARCHAR(20) NOT NULL DEFAULT 'text'"))
+        if "receipt_paper_width" not in settings_columns:
+            connection.execute(text("ALTER TABLE shop_settings ADD COLUMN receipt_paper_width INTEGER NOT NULL DEFAULT 80"))
+        if "receipt_logo_url" not in settings_columns:
+            connection.execute(text("ALTER TABLE shop_settings ADD COLUMN receipt_logo_url VARCHAR(1000) NOT NULL DEFAULT ''"))
+        if "receipt_show_logo" not in settings_columns:
+            connection.execute(text("ALTER TABLE shop_settings ADD COLUMN receipt_show_logo BOOLEAN NOT NULL DEFAULT TRUE"))
+        if "receipt_footer_text" not in settings_columns:
+            connection.execute(text("ALTER TABLE shop_settings ADD COLUMN receipt_footer_text VARCHAR(255) NOT NULL DEFAULT 'ขอบคุณที่ใช้บริการ'"))
+        if "receipt_show_cashier" not in settings_columns:
+            connection.execute(text("ALTER TABLE shop_settings ADD COLUMN receipt_show_cashier BOOLEAN NOT NULL DEFAULT TRUE"))
+        if "receipt_show_member" not in settings_columns:
+            connection.execute(text("ALTER TABLE shop_settings ADD COLUMN receipt_show_member BOOLEAN NOT NULL DEFAULT TRUE"))
         for table_name in (
             "channels", "products", "ingredients", "suppliers", "purchase_orders",
             "loyalty_customers", "shifts", "sales", "promotions", "expenses",

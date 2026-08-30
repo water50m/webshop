@@ -15,6 +15,7 @@ type AuthContextValue = {
   loading: boolean;
   locked: boolean;
   login: (username: string, password: string) => Promise<void>;
+  loginWithDevBypass: () => Promise<void>;
   loginWithFacebook: () => Promise<string | null>;
   unlock: (username: string, pin: string) => Promise<void>;
   unlockWithBiometric: () => Promise<void>;
@@ -79,6 +80,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLocked(false);
   }, []);
 
+  const loginWithDevBypass = useCallback(async () => {
+    const me = await api.devBypassLogin();
+    setUser(me);
+    setLocked(false);
+  }, []);
+
   const loginWithFacebook = useCallback(async () => {
     if (!isNativeAndroid()) return null;
     const { SocialLogin } = await import("@capgo/capacitor-social-login");
@@ -130,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, locked, login, loginWithFacebook, unlock, unlockWithBiometric, lock, logout, refresh }}>
+    <AuthContext.Provider value={{ user, loading, locked, login, loginWithDevBypass, loginWithFacebook, unlock, unlockWithBiometric, lock, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );

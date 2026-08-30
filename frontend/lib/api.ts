@@ -308,6 +308,12 @@ export type ShopSettings = {
   low_stock_line_target_id: string;
   receipt_printer_ip: string;
   receipt_printer_port: number;
+  receipt_paper_width: 58 | 80;
+  receipt_logo_url: string;
+  receipt_show_logo: boolean;
+  receipt_footer_text: string;
+  receipt_show_cashier: boolean;
+  receipt_show_member: boolean;
   inventory_mode: InventoryMode;
   order_parser_mode: OrderParserMode;
   ai_api_key: string;
@@ -759,6 +765,7 @@ export const api = {
 
   login: (username: string, password: string) =>
     request<NativeSessionUser>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+  devBypassLogin: () => request<AuthUser>("/api/auth/dev-bypass", { method: "POST" }),
   unlock: (username: string, pin: string) =>
     request<NativeSessionUser>("/api/auth/unlock", { method: "POST", body: JSON.stringify({ username, pin }) }),
   setPin: (pin: string) => request<{ ok: boolean }>("/api/auth/set-pin", { method: "POST", body: JSON.stringify({ pin }) }),
@@ -864,6 +871,18 @@ export const api = {
   getSettings: () => request<ShopSettings>("/api/settings"),
   updateSettings: (settings: ShopSettings) =>
     request<ShopSettings>("/api/settings", { method: "PUT", body: JSON.stringify(settings) }),
+  uploadReceiptLogo: async (file: File): Promise<ShopSettings> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE_URL}/api/settings/receipt-logo`, { method: "POST", body: formData, credentials: "include", headers: authenticatedHeaders() });
+    if (!res.ok) {
+      const body = await res.text();
+      let detail = body;
+      try { detail = JSON.parse(body).detail ?? body; } catch { /* keep raw response */ }
+      throw new ApiError(res.status, detail || `Request failed (${res.status})`);
+    }
+    return res.json() as Promise<ShopSettings>;
+  },
   listPrintBridges: () => request<PrintBridge[]>("/api/bridges"),
   createPrintBridge: (name: string) =>
     request<CreatedPrintBridge>("/api/bridges", { method: "POST", body: JSON.stringify({ name }) }),

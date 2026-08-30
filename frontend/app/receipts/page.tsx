@@ -4,6 +4,7 @@ import { ExternalLink, History, Printer, ReceiptText, Settings } from "lucide-re
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError, Sale } from "@/lib/api";
+import ReceiptTabs from "../components/ReceiptTabs";
 
 function money(value: number): string {
   return value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -20,10 +21,11 @@ export default function ReceiptsPage() {
   }, []);
 
   return (
-    <main className="p-4 md:p-6 lg:p-8 max-w-5xl w-full">
+    <main className="w-full p-4 md:p-6 lg:p-8">
+      <ReceiptTabs />
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2"><ReceiptText className="w-5 h-5 text-amber-500" />สร้าง/พิมพ์ใบเสร็จ</h1>
+          <h1 className="text-xl font-semibold flex items-center gap-2"><ReceiptText className="w-5 h-5 text-amber-500" />จัดการใบเสร็จ</h1>
           <p className="text-sm text-slate-500 mt-1">สร้างใบเสร็จจากการชำระเงินในหน้าขาย แล้วพิมพ์ได้ทันทีหรือพิมพ์ซ้ำจากรายการล่าสุด</p>
         </div>
         <Link href="/pos" className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-600">
