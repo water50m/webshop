@@ -154,18 +154,18 @@ export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen
         />
       )}
       {collapsed && (
-        <div className="flex fixed inset-y-0 left-0 w-3 z-50 items-center group print:hidden">
+        <div className="fixed inset-y-0 left-0 z-50 flex w-8 items-center print:hidden">
           <button
             onClick={toggleCollapsed}
             title="แสดงเมนู"
-            className="absolute left-0 top-1/2 -translate-y-1/2 bg-slate-900 text-white p-1.5 rounded-r-md shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+            className="absolute left-0 top-1/2 -translate-y-1/2 rounded-r-md bg-slate-900 p-1.5 text-white shadow-md hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       )}
       <aside
-        className={`shrink-0 bg-slate-900 text-slate-200 min-h-screen flex flex-col print:hidden fixed sm:static inset-y-0 left-0 z-40 transform transition-all w-64 sm:w-56 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} sm:translate-x-0 ${collapsed ? "sm:w-0 sm:overflow-hidden sm:border-r-0" : ""}`}
+        className={`shrink-0 bg-slate-900 text-slate-200 min-h-screen flex flex-col print:hidden fixed sm:static inset-y-0 left-0 z-40 transform transition-[width] w-64 ${collapsed ? "sm:w-0 sm:overflow-hidden sm:border-r-0" : "sm:w-56"} ${mobileOpen ? "translate-x-0" : "-translate-x-full"} sm:translate-x-0`}
       >
         <div className="flex items-center justify-between gap-2 px-4 py-4 text-white border-b border-slate-700/60">
           <div className="min-w-0">

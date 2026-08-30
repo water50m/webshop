@@ -652,8 +652,14 @@ export default function InboxPage() {
               <li key={conversation.id} className="relative overflow-hidden border-b">
                 <div
                   className="absolute inset-0 flex bg-violet-600"
-                  onTouchStart={(event) => { swipeStartX.current = event.touches[0]?.clientX ?? null; swipeWasGesture.current = false; }}
-                  onTouchEnd={(event) => handleConversationSwipeEnd(conversation.id, event.changedTouches[0]?.clientX ?? 0)}
+                  onPointerDown={(event) => {
+                    if (event.pointerType === "mouse" && event.button !== 0) return;
+                    swipeStartX.current = event.clientX;
+                    swipeWasGesture.current = false;
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }}
+                  onPointerUp={(event) => handleConversationSwipeEnd(conversation.id, event.clientX)}
+                  onPointerCancel={() => { swipeStartX.current = null; }}
                 >
                   <button
                     type="button"
@@ -702,8 +708,14 @@ export default function InboxPage() {
                 <div
                   className={`group relative flex items-center bg-white transition-transform duration-200 ${selectedId === conversation.id ? "bg-amber-100" : "hover:bg-amber-50"}`}
                   style={{ transform: swipedConversationId === conversation.id ? "translateX(-100%)" : "translateX(0)" }}
-                  onTouchStart={(event) => { swipeStartX.current = event.touches[0]?.clientX ?? null; swipeWasGesture.current = false; }}
-                  onTouchEnd={(event) => handleConversationSwipeEnd(conversation.id, event.changedTouches[0]?.clientX ?? 0)}
+                  onPointerDown={(event) => {
+                    if (event.pointerType === "mouse" && event.button !== 0) return;
+                    swipeStartX.current = event.clientX;
+                    swipeWasGesture.current = false;
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }}
+                  onPointerUp={(event) => handleConversationSwipeEnd(conversation.id, event.clientX)}
+                  onPointerCancel={() => { swipeStartX.current = null; }}
                 >
                   <button
                     onClick={() => {
