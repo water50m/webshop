@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.deps import accessible_channel_ids, get_active_shop_membership, get_current_user, require_channel_access, require_role
-from app.models import Channel, ChannelAuditLog, ChannelMembership, ChannelMembershipRole, ChannelType, DataDeletionRequest, MetaOAuthAttempt, ShopMembership, User, UserRole
+from app.models import Channel, ChannelAuditLog, ChannelMembership, ChannelMembershipRole, ChannelType, DataDeletionRequest, MetaOAuthAttempt, Shop, ShopMembership, ShopMembershipRole, User, UserRole
 from app.services.page_data_deletion import delete_page_data
 from app.services.meta_tokens import MetaTokenConfigurationError, decrypt_access_token, encrypt_access_token
 
@@ -54,6 +54,7 @@ class ConnectionOut(BaseModel):
     id: int
     page_id: str
     name: str
+    shop_id: int
     connected_at: str
 
 
@@ -145,7 +146,9 @@ def _active_attempt(db: Session, attempt_id: str, user: User) -> MetaOAuthAttemp
 
 
 def _connection_out(channel: Channel) -> ConnectionOut:
-    return ConnectionOut(id=channel.id, page_id=channel.external_id, name=channel.name, connected_at=channel.created_at.isoformat())
+    if channel.shop_id is None:
+        raise HTTPException(status_code=409, detail="Facebook Page นี้ยังไม่มีร้านที่ผูกไว้")
+    return ConnectionOut(id=channel.id, page_id=channel.external_id, name=channel.name, shop_id=channel.shop_id, connected_at=channel.created_at.isoformat())
 
 
 @router.post("/connections/start", response_model=ConnectionStartOut, dependencies=[Depends(require_role(UserRole.owner))])
@@ -289,14 +292,26 @@ def select_page(attempt_id: str, payload: SelectPageIn, db: Session = Depends(ge
         raise HTTPException(status_code=502, detail="ไม่สามารถผูก Webhook กับ Facebook Page นี้ได้") from None
     channel = db.query(Channel).filter_by(type=ChannelType.facebook_page, external_id=str(page["id"])).first()
     if channel is None:
-        channel = Channel(shop_id=attempt.shop_id, type=ChannelType.facebook_page, external_id=str(page["id"]), name=str(page.get("name") or ""))
+        # A Page is an operationally independent store.  It owns its own
+        # catalog, stock, POS bills, settings and staff membership boundary.
+        # Do not attach a second Page to the Shop that happened to be active
+        # when the owner started the OAuth flow.
+        shop = Shop(name=str(page.get("name") or "Facebook Shop")[:255])
+        db.add(shop)
+        db.flush()
+        db.add(ShopMembership(shop_id=shop.id, user_id=user.id, role=ShopMembershipRole.owner))
+        channel = Channel(shop_id=shop.id, type=ChannelType.facebook_page, external_id=str(page["id"]), name=str(page.get("name") or ""))
         db.add(channel)
         db.flush()
-    elif channel.shop_id != attempt.shop_id:
-        raise HTTPException(status_code=409, detail="Facebook Page นี้ถูกเชื่อมกับร้านอื่นแล้ว")
+    elif channel.shop_id is None:
+        raise HTTPException(status_code=409, detail="Facebook Page นี้ยังไม่มีร้านที่ผูกไว้")
     channel.name = str(page.get("name") or "")[:255]
     channel.access_token = encrypted_token
     channel.connected_facebook_user_id = attempt.facebook_user_id
+    # The person verified by Facebook as a Page administrator also needs the
+    # matching Shop membership; every catalog/POS endpoint is scoped by Shop.
+    if not db.query(ShopMembership).filter_by(shop_id=channel.shop_id, user_id=user.id).first():
+        db.add(ShopMembership(shop_id=channel.shop_id, user_id=user.id, role=ShopMembershipRole.manager))
     membership = db.query(ChannelMembership).filter_by(channel_id=channel.id, user_id=user.id).first()
     if membership is None:
         db.add(ChannelMembership(channel_id=channel.id, user_id=user.id, role=ChannelMembershipRole.page_owner, granted_by_user_id=user.id))

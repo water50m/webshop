@@ -107,6 +107,10 @@ def upsert_draft_order_from_matches(
                 continue
             draft_order = get_or_create_draft_order()
             product = db.get(Product, term.id)
+            if product is None or product.shop_id != conversation.channel.shop_id:
+                # A parser result must never turn a product from another
+                # Page's Shop into this customer's draft order.
+                continue
             existing_item = next(
                 (item for item in draft_order.items if item.product_id == product.id), None
             )
@@ -169,7 +173,7 @@ def upsert_draft_order_from_parser_v2(db: Session, conversation: Conversation, i
 
     for parsed_item in items:
         product = db.get(Product, parsed_item.product_id)
-        if product is None:
+        if product is None or product.shop_id != conversation.channel.shop_id:
             continue
         existing_item = next((item for item in draft_order.items if item.product_id == product.id), None)
         if existing_item:
@@ -314,12 +318,11 @@ def ingest_product_selection(
     raw_payload: dict,
 ) -> tuple[Conversation, Product, Message] | None:
     """Add a Messenger postback product choice to the customer's pending draft order."""
-    product = db.get(Product, product_id)
-    if product is None:
-        logger.warning("Ignoring Messenger selection for missing product %s", product_id)
-        return None
-
     channel = get_or_create_channel(db, channel_type, channel_external_id)
+    product = db.get(Product, product_id)
+    if product is None or product.shop_id != channel.shop_id:
+        logger.warning("Ignoring Messenger selection for unavailable product %s on Page %s", product_id, channel_external_id)
+        return None
     customer = get_or_create_customer(db, channel, sender_external_id)
     if channel_type == ChannelType.facebook_page:
         populate_messenger_display_name(customer)

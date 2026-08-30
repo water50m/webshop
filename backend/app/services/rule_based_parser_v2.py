@@ -123,13 +123,19 @@ def _contains(normalized_text: str, text: str) -> bool:
     return normalize_text(text) in normalized_text
 
 
-def _catalog(db: Session) -> list[CatalogEntry]:
+def _catalog(db: Session, shop_id: int | None = None) -> list[CatalogEntry]:
+    products_query = db.query(Product)
+    if shop_id is not None:
+        products_query = products_query.filter(Product.shop_id == shop_id)
     entries = [
         CatalogEntry(product_id=product.id, product_name=product.name, match_text=normalize_text(product.name), source="exact")
-        for product in db.query(Product).all()
+        for product in products_query.all()
         if product.name
     ]
-    aliases = db.query(ProductAlias).filter(ProductAlias.status == "approved").all()
+    aliases_query = db.query(ProductAlias).join(Product).filter(ProductAlias.status == "approved")
+    if shop_id is not None:
+        aliases_query = aliases_query.filter(Product.shop_id == shop_id)
+    aliases = aliases_query.all()
     entries.extend(
         CatalogEntry(
             product_id=alias.product_id,
@@ -148,10 +154,13 @@ def _tokens(normalized_text: str, entries: list[CatalogEntry]) -> list[str]:
     return [token for token in word_tokenize(normalized_text, custom_dict=dictionary, engine="newmm", keep_whitespace=False) if token.strip()]
 
 
-def _available_products(db: Session, predicate) -> list[Product]:
+def _available_products(db: Session, predicate, shop_id: int | None = None) -> list[Product]:
+    query = db.query(Product)
+    if shop_id is not None:
+        query = query.filter(Product.shop_id == shop_id)
     return [
         product
-        for product in db.query(Product).order_by(Product.name).all()
+        for product in query.order_by(Product.name).all()
         if product.is_available and (product.stock_mode == "unlimited" or product.stock_quantity > 0) and predicate(product)
     ]
 
@@ -161,7 +170,7 @@ def _names(products: list[Product]) -> str:
 
 
 def _question_result(
-    db: Session, normalized_text: str, matches: list[tuple[int, int, CatalogEntry]]
+    db: Session, normalized_text: str, matches: list[tuple[int, int, CatalogEntry]], shop_id: int | None = None
 ) -> tuple[str, str, str | None, str | None] | None:
     """Return (intent, next_state, handoff_reason, answer_text) for a question.
 
@@ -172,7 +181,10 @@ def _question_result(
     has_known_product = bool(matches)
     has_question_marker = any(_contains(normalized_text, signal) for signal in GENERIC_QUESTION_SIGNALS)
     if _contains(normalized_text, "น้ำจิ้ม") and has_question_marker:
-        sauce = db.query(Product).filter(Product.name == "น้ำจิ้ม").first()
+        sauce_query = db.query(Product).filter(Product.name == "น้ำจิ้ม")
+        if shop_id is not None:
+            sauce_query = sauce_query.filter(Product.shop_id == shop_id)
+        sauce = sauce_query.first()
         is_available = sauce is not None and sauce.is_available and (
             sauce.stock_mode == "unlimited" or sauce.stock_quantity > 0
         )
@@ -180,7 +192,7 @@ def _question_result(
             return "ask_option", "answer_if_verified", None, "สามารถเพิ่มน้ำจิ้มได้ครับ"
         return "ask_admin", "waiting_for_admin", "stock_unavailable_or_unset", None
     if _contains(normalized_text, "น้ำ") and _contains(normalized_text, "อะไร"):
-        drinks = _available_products(db, lambda product: product.category == "เครื่องดื่ม" or "น้ำ" in product.name)
+        drinks = _available_products(db, lambda product: product.category == "เครื่องดื่ม" or "น้ำ" in product.name, shop_id)
         if drinks:
             return "ask_menu", "answer_if_verified", None, f"ขณะนี้มี: {_names(drinks)}"
         return "ask_admin", "waiting_for_admin", "stock_unavailable_or_unset", None
@@ -193,7 +205,10 @@ def _question_result(
         )
     ):
         product_ids = {entry.product_id for _, _, entry in matches}
-        products = db.query(Product).filter(Product.id.in_(product_ids)).order_by(Product.name).all()
+        products_query = db.query(Product).filter(Product.id.in_(product_ids))
+        if shop_id is not None:
+            products_query = products_query.filter(Product.shop_id == shop_id)
+        products = products_query.order_by(Product.name).all()
         available = all(
             product.is_available and (product.stock_mode == "unlimited" or product.stock_quantity > 0)
             for product in products
@@ -204,14 +219,17 @@ def _question_result(
     if has_question_marker and _contains(normalized_text, "ไก่") and any(
         _contains(normalized_text, word) for word in ("เพิ่ม", "เลือก", "ส่วน")
     ):
-        chicken_parts = _available_products(db, lambda product: product.category == "ไก่")
+        chicken_parts = _available_products(db, lambda product: product.category == "ไก่", shop_id)
         if chicken_parts:
             return "ask_option", "answer_if_verified", None, f"สามารถเลือกเพิ่มได้: {_names(chicken_parts)}"
         return "ask_admin", "waiting_for_admin", "stock_unavailable_or_unset", None
     if any(signal in normalized_text for signal in ANSWERABLE_QUESTION_SIGNALS["ask_price"]):
         if has_known_product:
             product_ids = {entry.product_id for _, _, entry in matches}
-            products = db.query(Product).filter(Product.id.in_(product_ids)).order_by(Product.name).all()
+            products_query = db.query(Product).filter(Product.id.in_(product_ids))
+            if shop_id is not None:
+                products_query = products_query.filter(Product.shop_id == shop_id)
+            products = products_query.order_by(Product.name).all()
             answer = ", ".join(f"{product.name} {float(product.price):.0f} บาท" for product in products)
             return "ask_price", "answer_if_verified", None, answer
         return "ask_admin", "waiting_for_admin", "question_requires_admin", None
@@ -219,7 +237,7 @@ def _question_result(
         # Order options (for example sauce) can be offered when explicitly
         # requested, but are not stand-alone menu entries.
         menu = _available_products(
-            db, lambda product: product.category != "ตัวเลือกออเดอร์" and product.show_in_menu_answer
+            db, lambda product: product.category != "ตัวเลือกออเดอร์" and product.show_in_menu_answer, shop_id
         )
         if menu:
             return "ask_menu", "answer_if_verified", None, f"ขณะนี้มี: {_names(menu)}"
@@ -255,7 +273,7 @@ def _greeting_result(normalized_text: str) -> tuple[str, str, str | None, str | 
     return None
 
 
-def _ambiguous_special_order_result(db: Session, normalized_text: str) -> ParserV2Result | None:
+def _ambiguous_special_order_result(db: Session, normalized_text: str, shop_id: int | None = None) -> ParserV2Result | None:
     """Ask before interpreting a bare 'พิเศษ' as either rice or chicken.
 
     The product catalog may contain both kinds (and several chicken
@@ -267,7 +285,7 @@ def _ambiguous_special_order_result(db: Session, normalized_text: str) -> Parser
         return None
     candidates = [
         product
-        for product in _available_products(db, lambda product: "พิเศษ" in product.name)
+        for product in _available_products(db, lambda product: "พิเศษ" in product.name, shop_id)
         if "ข้าว" in product.name or "ไก่" in product.name
     ]
     if not any("ข้าว" in product.name for product in candidates) or not any("ไก่" in product.name for product in candidates):
@@ -369,13 +387,16 @@ def _fuzzy_candidates(normalized_text: str, tokens: list[str], entries: list[Cat
     return sorted(results, key=lambda candidate: candidate["score"], reverse=True)[:2]
 
 
-def _stock_candidates(db: Session, product_ids: set[int]) -> tuple[list[Product], list[Product]]:
-    products = db.query(Product).filter(Product.id.in_(product_ids)).all() if product_ids else []
+def _stock_candidates(db: Session, product_ids: set[int], shop_id: int | None = None) -> tuple[list[Product], list[Product]]:
+    query = db.query(Product).filter(Product.id.in_(product_ids))
+    if shop_id is not None:
+        query = query.filter(Product.shop_id == shop_id)
+    products = query.all() if product_ids else []
     return products, [product for product in products if product.stock_quantity <= 0]
 
 
 def _unresolved_addition(
-    db: Session, normalized_text: str, matches: list[tuple[int, int, CatalogEntry]], entries: list[CatalogEntry]
+    db: Session, normalized_text: str, matches: list[tuple[int, int, CatalogEntry]], entries: list[CatalogEntry], shop_id: int | None = None
 ) -> tuple[str, list[dict]] | None:
     """Safely handle an unmatched phrase following 'เพิ่ม'.
 
@@ -400,7 +421,7 @@ def _unresolved_addition(
         return None
     related_entries = [entry for entry in entries if len(suffix) >= 2 and suffix in entry.match_text]
     product_ids = {entry.product_id for entry in related_entries}
-    products, _ = _stock_candidates(db, product_ids)
+    products, _ = _stock_candidates(db, product_ids, shop_id)
     unavailable = [
         product for product in products if not product.is_available or (product.stock_mode != "unlimited" and product.stock_quantity <= 0)
     ]
@@ -485,10 +506,10 @@ def _conditional_substitution(
     return (main_matches, fallback_by_product) if fallback_by_product else (matches, {})
 
 
-def parse_message(db: Session, text: str, *, entries: list[CatalogEntry] | None = None) -> ParserV2Result:
+def parse_message(db: Session, text: str, *, entries: list[CatalogEntry] | None = None, shop_id: int | None = None) -> ParserV2Result:
     """Parse one message without creating an order or modifying live conversations."""
     normalized = normalize_text(text)
-    entries = entries if entries is not None else _catalog(db)
+    entries = entries if entries is not None else _catalog(db, shop_id)
     tokens = _tokens(normalized, entries)
     raw_matches = _matches(normalized, entries)
     negated_matches = [match for match in raw_matches if _match_is_negated(normalized, match[0])]
@@ -502,13 +523,13 @@ def parse_message(db: Session, text: str, *, entries: list[CatalogEntry] | None 
     if greeting:
         intent, next_state, handoff_reason, answer_text = greeting
         return ParserV2Result(normalized, tokens, intent, next_state, [], handoff_reason, [], answer_text=answer_text)
-    question = _question_result(db, normalized, matches)
+    question = _question_result(db, normalized, matches, shop_id)
     if question:
         intent, next_state, handoff_reason, answer_text = question
         return ParserV2Result(
             normalized, tokens, intent, next_state, [], handoff_reason, [], answer_text=answer_text
         )
-    ambiguous_special = _ambiguous_special_order_result(db, normalized)
+    ambiguous_special = _ambiguous_special_order_result(db, normalized, shop_id)
     if ambiguous_special:
         return ambiguous_special
 
@@ -532,7 +553,7 @@ def parse_message(db: Session, text: str, *, entries: list[CatalogEntry] | None 
             return _quantity(normalized, start, end)
 
         product_ids = {entry.product_id for _, _, entry in matches} | {entry.product_id for entry in fallback_by_product.values()}
-        catalog_products, _ = _stock_candidates(db, product_ids)
+        catalog_products, _ = _stock_candidates(db, product_ids, shop_id)
         products_by_id = {product.id: product for product in catalog_products}
         effective_matches: list[tuple[int, int, CatalogEntry]] = []
         fallback_names: dict[tuple[int, int, int], str] = {}
@@ -582,7 +603,7 @@ def parse_message(db: Session, text: str, *, entries: list[CatalogEntry] | None 
             return ParserV2Result(
                 normalized, tokens, "start_order", "waiting_for_admin", [], "stock_unavailable_or_unset", candidates
             )
-        unresolved_addition = _unresolved_addition(db, normalized, matches, entries)
+        unresolved_addition = _unresolved_addition(db, normalized, matches, entries, shop_id)
         if unresolved_addition:
             reason, candidates = unresolved_addition
             return ParserV2Result(normalized, tokens, "start_order", "waiting_for_admin", [], reason, candidates)
@@ -619,7 +640,7 @@ def parse_message(db: Session, text: str, *, entries: list[CatalogEntry] | None 
     return ParserV2Result(normalized, tokens, "unknown", "waiting_for_admin", [], "unknown_message", fuzzy_candidates)
 
 
-def _context_reference_result(db: Session, text: str, state: ParserV2ConversationState) -> ParserV2Result | None:
+def _context_reference_result(db: Session, text: str, state: ParserV2ConversationState, shop_id: int | None = None) -> ParserV2Result | None:
     """Resolve only unambiguous references to the most recent single item."""
     normalized = normalize_text(text)
     refers_to_last_item = any(phrase in normalized for phrase in ("เอาอันนั้น", "เอาอันเดิม", "เอาแบบเดิม", "เอาเหมือนเดิม"))
@@ -631,6 +652,8 @@ def _context_reference_result(db: Session, text: str, state: ParserV2Conversatio
     amount = re.search(r"(?<!\d)(\d{1,3})(?!\d)", normalized)
     quantity = int(amount.group(1)) if amount else 1
     product = db.get(Product, previous.get("product_id"))
+    if product is not None and shop_id is not None and product.shop_id != shop_id:
+        product = None
     if product is None or not product.is_available or (
         product.stock_mode != "unlimited" and product.stock_quantity < quantity
     ):
@@ -648,7 +671,7 @@ def _context_reference_result(db: Session, text: str, state: ParserV2Conversatio
 
 
 def _pending_special_choice_result(
-    db: Session, text: str, state: ParserV2ConversationState
+    db: Session, text: str, state: ParserV2ConversationState, shop_id: int | None = None
 ) -> ParserV2Result | None:
     """Turn a reply to the bare-special question into a verified item."""
     if state.state != "awaiting_special_type" or not state.last_items:
@@ -664,9 +687,12 @@ def _pending_special_choice_result(
             normalized, [], "ask_special_type", "awaiting_special_type", [], None, [],
             answer_text="กรุณาเลือกพิเศษเป็นข้าวหรือไก่ครับ",
         )
+    candidates_query = db.query(Product).filter(Product.id.in_(candidate_ids))
+    if shop_id is not None:
+        candidates_query = candidates_query.filter(Product.shop_id == shop_id)
     candidates = [
         product
-        for product in db.query(Product).filter(Product.id.in_(candidate_ids)).order_by(Product.name).all()
+        for product in candidates_query.order_by(Product.name).all()
         if requested_kind in product.name
         and product.is_available
         and (product.stock_mode == "unlimited" or product.stock_quantity > 0)
@@ -707,9 +733,11 @@ def advance_conversation_state(
 ) -> tuple[ParserV2Result, ParserV2ConversationState]:
     """Advance Parser v2 memory without sending a reply or creating an order."""
     state = get_or_create_conversation_state(db, conversation_id)
-    result = parse_message(db, text)
-    special_choice = _pending_special_choice_result(db, text, state)
-    contextual = _context_reference_result(db, text, state) if special_choice is None else None
+    conversation = db.get(Conversation, conversation_id)
+    shop_id = conversation.channel.shop_id if conversation is not None else None
+    result = parse_message(db, text, shop_id=shop_id)
+    special_choice = _pending_special_choice_result(db, text, state, shop_id)
+    contextual = _context_reference_result(db, text, state, shop_id) if special_choice is None else None
     if special_choice is not None:
         result = special_choice
     if contextual is not None:

@@ -28,9 +28,12 @@ class MenuOption:
     special_product: Product | None = None
 
 
-def list_menu_options(db: Session) -> list[MenuOption]:
+def list_menu_options(db: Session, shop_id: int | None = None) -> list[MenuOption]:
     """Pair products named '<menu>พิเศษ' with their normal menu where possible."""
-    products = db.query(Product).order_by(Product.name, Product.id).all()
+    query = db.query(Product)
+    if shop_id is not None:
+        query = query.filter(Product.shop_id == shop_id)
+    products = query.order_by(Product.name, Product.id).all()
     product_by_name = {product.name: product for product in products}
     paired_special_ids = {
         special.id
@@ -149,10 +152,13 @@ def send_verified_answer(
     return True
 
 
-def _menu_answer_products(db: Session) -> list[Product]:
+def _menu_answer_products(db: Session, shop_id: int | None = None) -> list[Product]:
+    query = db.query(Product)
+    if shop_id is not None:
+        query = query.filter(Product.shop_id == shop_id)
     return [
         product
-        for product in db.query(Product).order_by(Product.name, Product.id).all()
+        for product in query.order_by(Product.name, Product.id).all()
         if product.show_in_menu_answer
         and product.category != "ตัวเลือกออเดอร์"
         and product.is_available
@@ -203,9 +209,12 @@ def send_menu_answer(
     A narrower query (for example drinks) stays textual.  The image mode is
     used only when the parser's answer exactly equals the configured menu list.
     """
-    products = _menu_answer_products(db)
+    shop_id = conversation.channel.shop_id
+    if shop_id is None:
+        return send_verified_answer(db, conversation, page_id, recipient_id, text)
+    products = _menu_answer_products(db, shop_id)
     expected_text = _menu_answer_text(products) if products else ""
-    settings = db.get(ShopSettings, 1)
+    settings = db.query(ShopSettings).filter_by(shop_id=shop_id).first()
     if not products or settings is None or settings.menu_answer_format != "image" or text != expected_text:
         return send_verified_answer(db, conversation, page_id, recipient_id, text)
     signature = ",".join(f"{product.id}:{product.price}" for product in products)
@@ -230,7 +239,7 @@ def send_menu(
     """Send one vertical Messenger button-template message per menu option."""
     if _automated_reply_sent_twice(db, conversation, "menu"):
         return False
-    options = list_menu_options(db)
+    options = list_menu_options(db, conversation.channel.shop_id)
     if not options:
         response = _send(page_id, recipient_id, {"text": "ขออภัย ขณะนี้ยังไม่มีเมนูให้เลือกค่ะ"}, _channel_token(conversation))
         if response is None:

@@ -205,6 +205,7 @@ export type FacebookConnection = {
   id: number;
   page_id: string;
   name: string;
+  shop_id: number;
   connected_at: string;
 };
 

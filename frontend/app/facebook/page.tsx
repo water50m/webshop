@@ -66,9 +66,13 @@ export default function FacebookConnectionPage() {
     setError(null);
     try {
       const connection = await api.selectFacebookPage(pending.id, selectedPageId);
+      // Each Page has its own Shop. Switch the active tenant immediately so
+      // the next Inbox, product and POS request cannot use the prior Page.
+      window.localStorage.setItem("active-shop-id", String(connection.shop_id));
       setConnections((current) => [...current.filter((item) => item.id !== connection.id), connection]);
       setPending(null);
       setNotice(`เชื่อม ${connection.name || connection.page_id} สำเร็จแล้ว`);
+      window.setTimeout(() => window.location.assign("/inbox"), 450);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {
