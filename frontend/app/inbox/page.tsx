@@ -112,6 +112,15 @@ export default function InboxPage() {
   }
 
   const loadConversations = useCallback(async () => {
+    // Do not fetch the all-page default while the active Page connection is
+    // still resolving.  That transient response used to flash another Page's
+    // conversations before the selected channel filter was applied.
+    if (channelId === null) {
+      setConversations([]);
+      setSelectedId(null);
+      setMessages([]);
+      return;
+    }
     try {
       setError(null);
       const data = await api.listConversations({
@@ -179,7 +188,7 @@ export default function InboxPage() {
         return;
       }
       const conversation = incoming.conversation;
-      if (channelId !== null && conversation.channel_id !== channelId) return;
+      if (channelId === null || conversation.channel_id !== channelId) return;
       const matchesStatus = !statusFilter || conversation.status === statusFilter;
       const matchesVisibility =
         visibility === "all" || (visibility === "active" ? !conversation.is_hidden : conversation.is_hidden);

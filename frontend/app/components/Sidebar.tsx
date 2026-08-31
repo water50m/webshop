@@ -19,7 +19,6 @@ import {
   ShieldAlert,
   UserCircle,
   Truck,
-  X,
   Beaker,
   ClipboardCheck,
   BrainCircuit,
@@ -32,8 +31,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, Shop, UserRole } from "@/lib/api";
-
-const COLLAPSE_STORAGE_KEY = "sidebar-collapsed";
 
 const NAV_ITEMS: { href: string; label: string; icon: typeof Store; roles?: UserRole[]; facebookOnly?: boolean }[] = [
   { href: "/", label: "หน้าหลัก", icon: Home },
@@ -66,7 +63,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   cashier: "แคชเชียร์",
 };
 
-export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen: boolean; onMobileOpenChange: (open: boolean) => void }) {
+export default function Sidebar({ mobileOpen, onMobileOpenChange, desktopOpen, onDesktopOpenChange }: { mobileOpen: boolean; onMobileOpenChange: (open: boolean) => void; desktopOpen: boolean; onDesktopOpenChange: (open: boolean) => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout, lock, refresh } = useAuth();
@@ -74,16 +71,9 @@ export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [savingPin, setSavingPin] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [showDesktopReveal, setShowDesktopReveal] = useState(false);
   const [shops, setShops] = useState<Shop[]>([]);
   const [activeShopId, setActiveShopId] = useState<string>("");
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (localStorage.getItem(COLLAPSE_STORAGE_KEY) === "1") setCollapsed(true);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     void api.listShops().then((items) => {
@@ -96,20 +86,6 @@ export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen
       }
     }).catch(() => undefined);
   }, []);
-
-  function changeShop(id: string) {
-    setActiveShopId(id);
-    window.localStorage.setItem("active-shop-id", id);
-    window.location.reload();
-  }
-
-  function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem(COLLAPSE_STORAGE_KEY, next ? "1" : "0");
-      return next;
-    });
-  }
 
   async function handleLogout() {
     await logout();
@@ -141,6 +117,19 @@ export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen
 
   const visibleItems = NAV_ITEMS.filter((item) => (!item.roles || (user && item.roles.includes(user.role))) && (!item.facebookOnly || user?.has_facebook_identity));
   const activeShop = shops.find((shop) => String(shop.id) === activeShopId);
+  function openDesktopSidebar() {
+    onDesktopOpenChange(true);
+    setShowDesktopReveal(false);
+  }
+
+  function closeDesktopSidebar() {
+    onDesktopOpenChange(false);
+  }
+
+  function dismissSidebar() {
+    closeDesktopSidebar();
+    onMobileOpenChange(false);
+  }
 
   return (
     <>
@@ -150,40 +139,24 @@ export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen
           onClick={() => onMobileOpenChange(false)}
         />
       )}
-      {collapsed && (
-        <div className="fixed inset-y-0 left-0 z-50 flex w-8 items-center print:hidden">
-          <button
-            onClick={toggleCollapsed}
-            title="แสดงเมนู"
-            className="absolute left-0 top-1/2 -translate-y-1/2 rounded-r-md bg-slate-900 p-1.5 text-white shadow-md hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+      <div className="fixed inset-y-0 left-0 z-30 hidden w-16 print:hidden sm:block" onMouseEnter={() => setShowDesktopReveal(true)} onMouseLeave={() => setShowDesktopReveal(false)}>
+        {showDesktopReveal && !desktopOpen && <button onClick={openDesktopSidebar} className="absolute left-2 top-1/2 inline-flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-slate-300 bg-white text-black shadow-lg transition hover:border-slate-500 hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400" title="เปิดเมนู" aria-label="เปิดเมนู"><ChevronRight className="h-8 w-8" strokeWidth={2.5} /></button>}
+      </div>
       <aside
-        className={`shrink-0 bg-slate-900 text-slate-200 min-h-screen flex flex-col print:hidden fixed sm:static inset-y-0 left-0 z-40 transform transition-[width] w-64 ${collapsed ? "sm:w-0 sm:overflow-hidden sm:border-r-0" : "sm:w-56"} ${mobileOpen ? "translate-x-0" : "-translate-x-full"} sm:translate-x-0`}
+        className={`fixed inset-y-0 left-0 z-40 flex min-h-screen w-56 transform flex-col bg-slate-900 text-slate-200 transition-transform duration-200 ease-out print:hidden ${mobileOpen || desktopOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex items-center justify-between gap-2 px-4 py-4 text-white border-b border-slate-700/60">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <span className="flex items-center gap-2 font-semibold text-lg">
             <Store className="w-6 h-6 text-amber-400" />
             SStore
             </span>
             {activeShop?.facebook_page_name && <div className="mt-1 truncate pl-8 text-sm font-medium text-amber-300" title={activeShop.facebook_page_name}>{activeShop.facebook_page_name}</div>}
           </div>
-          <button onClick={() => onMobileOpenChange(false)} className="min-h-11 min-w-11 -mr-2 text-slate-400 hover:text-white sm:hidden" aria-label="ปิดเมนู">
-            <X className="w-5 h-5" />
+          <button onClick={dismissSidebar} title="ซ่อนเมนู" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-800 text-white shadow-sm transition-colors hover:bg-slate-700" aria-label="ซ่อนเมนู">
+            <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
           </button>
         </div>
-        <button
-          onClick={toggleCollapsed}
-          title="ซ่อนเมนู"
-          className="hidden sm:flex items-center justify-center gap-2 py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-b border-slate-700/60"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          ซ่อนเมนู
-        </button>
         <nav className="flex-1 py-3 overflow-y-auto">
           {visibleItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname?.startsWith(href + "/");
@@ -204,7 +177,6 @@ export default function Sidebar({ mobileOpen, onMobileOpenChange }: { mobileOpen
         </nav>
       {user && (
         <div className="border-t border-slate-700/60 px-4 py-3">
-          {shops.length > 0 && <select value={activeShopId} onChange={(event) => changeShop(event.target.value)} className="mb-3 h-8 w-full rounded bg-slate-800 px-2 text-xs text-white outline-none ring-1 ring-slate-700"><option value="" disabled>เลือกร้าน</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select>}
           <div className="text-sm font-medium text-white truncate">{user.display_name || user.username}</div>
           <div className="text-xs text-slate-400 mb-2">{ROLE_LABEL[user.role]}</div>
 

@@ -17,6 +17,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const isPublicLegalPage = ["/privacy", "/terms", "/data-deletion"].includes(pathname);
   const isInboxPage = pathname === "/inbox";
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -51,9 +52,9 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         </button>
         <span className="text-sm font-semibold text-slate-800">SStore</span>
       </header>}
-      <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
+      <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} desktopOpen={desktopSidebarOpen} onDesktopOpenChange={setDesktopSidebarOpen} />
       <MobileNavContext.Provider value={setMobileNavOpen}>
-        <div className="mobile-content min-h-0 min-w-0 flex-1">{children}</div>
+        <div className={`mobile-content min-h-0 min-w-0 flex-1 transition-[margin] duration-200 ease-out ${desktopSidebarOpen ? "sm:ml-56" : ""}`}>{children}</div>
       </MobileNavContext.Provider>
     </div>
   );

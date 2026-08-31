@@ -3,8 +3,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import accessible_channel_ids, get_current_user, require_conversation_access
-from app.models import ChannelAuditLog, ChannelMembershipRole, Conversation, DraftOrder, DraftOrderStatus, Message, User
+from app.deps import accessible_channel_ids, get_active_shop_membership, get_current_user, require_conversation_access
+from app.models import Channel, ChannelAuditLog, ChannelMembershipRole, Conversation, DraftOrder, DraftOrderStatus, Message, User
 from app.services.conversation_labels import PAYMENT_LABELS, PRIMARY_LABELS, label_slots, set_label_slot
 from app.services.meta_messenger import send_manual_photo, send_manual_text, send_saved_delivery_note
 
@@ -120,9 +120,14 @@ def list_conversations(
     channel_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    membership=Depends(get_active_shop_membership),
 ):
     channel_ids = accessible_channel_ids(user, db)
-    query = db.query(Conversation).filter(Conversation.channel_id.in_(channel_ids))
+    query = (
+        db.query(Conversation)
+        .join(Channel, Conversation.channel_id == Channel.id)
+        .filter(Conversation.channel_id.in_(channel_ids), Channel.shop_id == membership.shop_id)
+    )
     if channel_id is not None:
         if channel_id not in channel_ids:
             raise HTTPException(status_code=403, detail="ไม่มีสิทธิ์เข้าถึงเพจนี้")

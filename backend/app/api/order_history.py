@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import accessible_channel_ids, get_current_user
-from app.models import Conversation, DraftOrder, DraftOrderStatus, User
+from app.deps import accessible_channel_ids, get_active_shop_membership, get_current_user
+from app.models import Channel, Conversation, DraftOrder, DraftOrderStatus, User
 
 router = APIRouter(
     prefix="/api/order-history",
@@ -38,11 +38,16 @@ class OrderHistoryCustomerOut(BaseModel):
 
 
 @router.get("", response_model=list[OrderHistoryCustomerOut])
-def list_chat_order_history(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_chat_order_history(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    membership=Depends(get_active_shop_membership),
+):
     """Confirmed chat orders grouped by customer; independent of Inbox messages."""
     confirmed_orders = (
-        db.query(DraftOrder).join(Conversation)
+        db.query(DraftOrder).join(Conversation).join(Channel, Conversation.channel_id == Channel.id)
         .filter(DraftOrder.status == DraftOrderStatus.confirmed)
+        .filter(Channel.shop_id == membership.shop_id)
         .filter(Conversation.channel_id.in_(accessible_channel_ids(user, db)))
         .order_by(DraftOrder.confirmed_at.desc(), DraftOrder.id.desc())
         .all()

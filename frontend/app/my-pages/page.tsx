@@ -5,6 +5,19 @@ import { useEffect, useState } from "react";
 import { api, ApiError, FacebookOnboardingPage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
+function PageAvatar({ page }: { page: FacebookOnboardingPage }) {
+  const initial = (page.name || "F").slice(0, 1).toUpperCase();
+  const pictureUrl = `https://graph.facebook.com/v22.0/${encodeURIComponent(page.id)}/picture?type=large`;
+  return (
+    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e7f0ff] text-sm font-semibold text-[#1877f2]" aria-label={`รูปโปรไฟล์เพจ ${page.name}`}>
+      {initial}
+      {/* Facebook serves the current Page picture from its Graph endpoint; no image file is stored by SStore. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={pictureUrl} alt="" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = "none"; }} />
+    </span>
+  );
+}
+
 export default function MyFacebookPagesPage() {
   const { user } = useAuth();
   const [pages, setPages] = useState<FacebookOnboardingPage[]>([]);
@@ -24,7 +37,6 @@ export default function MyFacebookPagesPage() {
       return () => window.clearTimeout(errorTimer);
     }
     if (!user?.has_facebook_identity) return;
-    setBusy(true);
     const loadPages = resultId
       ? api.getFacebookAccountPages(resultId).then((result) => {
         setAttemptId(result.id);
@@ -90,7 +102,7 @@ export default function MyFacebookPagesPage() {
       </section>
 
       {error && <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-      {pages.length > 0 && <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4"><h2 className="font-semibold text-slate-900">เพจที่ใช้งานได้</h2><ul className="mt-3 divide-y divide-slate-100">{pages.map((page) => <li key={page.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"><div><p className="font-medium text-slate-800">{page.name}</p><p className="text-xs text-slate-500">Page ID: {page.id}</p></div>{page.registered ? <div className="flex w-full items-center gap-3 sm:w-auto"><span className="hidden items-center gap-1 text-xs font-medium text-emerald-700 sm:inline-flex"><CheckCircle2 className="h-4 w-4" />ลงทะเบียนแล้ว</span><button onClick={() => activatePage(page)} className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-[#1877f2] px-3 text-xs font-medium text-white hover:bg-[#166fe5] sm:w-auto"><MessageCircle className="h-3.5 w-3.5" />ใช้งานเพจนี้</button></div> : <button onClick={() => void registerPage(page)} disabled={busy} className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-60 sm:w-auto"><ExternalLink className="h-3.5 w-3.5" />ลงทะเบียนเพจนี้</button>}</li>)}</ul></section>}
+      {pages.length > 0 && <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4"><h2 className="font-semibold text-slate-900">เพจที่ใช้งานได้</h2><ul className="mt-3 divide-y divide-slate-100">{pages.map((page) => <li key={page.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"><div className="flex min-w-0 items-center gap-3"><PageAvatar page={page} /><div className="min-w-0"><p className="truncate font-medium text-slate-800">{page.name}</p><p className="text-xs text-slate-500">Page ID: {page.id}</p></div></div>{page.registered ? <div className="flex w-full items-center gap-3 sm:w-auto"><span className="hidden items-center gap-1 text-xs font-medium text-emerald-700 sm:inline-flex"><CheckCircle2 className="h-4 w-4" />ลงทะเบียนแล้ว</span><button onClick={() => activatePage(page)} className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-[#1877f2] px-3 text-xs font-medium text-white hover:bg-[#166fe5] sm:w-auto"><MessageCircle className="h-3.5 w-3.5" />ใช้งานเพจนี้</button></div> : <button onClick={() => void registerPage(page)} disabled={busy} className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-60 sm:w-auto"><ExternalLink className="h-3.5 w-3.5" />ลงทะเบียนเพจนี้</button>}</li>)}</ul></section>}
     </main>
   );
 }
